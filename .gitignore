@@ -1,0 +1,22 @@
+# 依赖与构建缓存
+node_modules/
+__pycache__/
+*.py[cod]
+.vite/
+.venv/
+venv/
+
+# 前端构建产物（如需单端口部署请保留，通常由 npm run build 生成）
+# dist/
+
+# 数据库与临时文件
+backend/data/*.db-journal
+backend/data/*.db-wal
+backend/devtools/check_output.json
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
