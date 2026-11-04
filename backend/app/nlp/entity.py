@@ -138,6 +138,12 @@ class Entity:
     source: str
     sentence_index: int = -1
     id: str = ""
+    # 指代消解元信息：ref_kind 取 "group" / "pair" / "single" / "event"，
+    # ref_members 记录 "双方/后者" 指向的实体对，ref_other 记录另一方。
+    # 普通实体这三个字段保持默认值，不影响现有逻辑。
+    ref_kind: str = ""
+    ref_members: tuple["Entity", ...] = ()
+    ref_other: "Entity | None" = None
 
     def as_dict(self) -> dict:
         from .lexicon import ENTITY_TYPES

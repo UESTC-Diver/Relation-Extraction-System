@@ -62,6 +62,98 @@ _DEMONSTRATIVE_RE = re.compile(
 _BOTH_RE = re.compile(r"双方|两方|两者|二者")
 _ORDER_RE = re.compile(r"后者|前者")
 
+# --------------------------------------------------------------------------- #
+# 指代消解与触发词容错资源
+# --------------------------------------------------------------------------- #
+_GROUP_SET = set(COREF_GROUP_WORDS)
+_LATER_SET = set(COREF_LATER_WORDS)
+_EARLIER_SET = set(COREF_EARLIER_WORDS)
+_DEFINITE_SET = set(COREF_DEFINITE_WORDS)
+_EVENT_SET = set(COREF_EVENT_WORDS)
+_COREF_RE = re.compile(
+    "|".join(
+        map(
+            re.escape,
+            sorted(
+                _GROUP_SET | _LATER_SET | _EARLIER_SET | _DEFINITE_SET | _EVENT_SET,
+                key=len,
+                reverse=True,
+            ),
+        )
+    )
+)
+_SALIENT_TYPES = {"ORG", "PERSON"}
+_CLAUSE_PUNCT = "，,；;。！？!?"
+# 事件回指词 -> 优先跟随的关系类型
+_EVENT_RELATION_PREF = {
+    "此次收购": ("acquire",),
+    "本次收购": ("acquire",),
+    "此次交易": ("acquire", "invest"),
+    "本次交易": ("acquire", "invest"),
+    "这笔交易": ("acquire", "invest"),
+    "该笔交易": ("acquire", "invest"),
+    "该交易": ("acquire", "invest"),
+    "这一交易": ("acquire", "invest"),
+    "此次合作": ("cooperate", "sign"),
+    "本次合作": ("cooperate", "sign"),
+    "此次投资": ("invest",),
+    "本次投资": ("invest",),
+}
+
+# 触发词内部允许插入的副词：按长度倒序，最长优先
+_FILLERS_BY_LENGTH = sorted(set(TRIGGER_FILLERS), key=len, reverse=True)
+
+
+def _is_cjk(ch: str) -> bool:
+    return "一" <= ch <= "鿿"
+
+
+def _trigger_view(text: str) -> tuple[str, list[int]]:
+    """剔除触发词内部插入的副词，返回 (规范化文本, 位置映射)。
+
+    例如 "饿了么总部仍位于上海" -> "饿了么总部位于上海"，
+    "总部仍位于" 在原文中仍是一个连续的触发片段。只剥离两侧都是
+    汉字、且属于 TRIGGER_FILLERS 的副词，否定词不在此列。
+    """
+    out: list[str] = []
+    mapping: list[int] = []
+    i, n = 0, len(text)
+    while i < n:
+        removed = 0
+        if 0 < i < n - 1 and _is_cjk(text[i - 1]):
+            for filler in _FILLERS_BY_LENGTH:
+                j = i + len(filler)
+                if j < n and text.startswith(filler, i) and _is_cjk(text[j]):
+                    removed = len(filler)
+                    break
+        if removed:
+            i += removed
+            continue
+        out.append(text[i])
+        mapping.append(i)
+        i += 1
+    return "".join(out), mapping
+
+
+def _ordered_distinct(entities: list[Entity]) -> list[Entity]:
+    """按首次出现顺序去重（同一实体只保留第一次提及）。"""
+    seen: set[tuple[str, str]] = set()
+    out: list[Entity] = []
+    for e in entities:
+        key = (canonical_name(e.text, e.type), e.type)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(e)
+    return out
+
+
+def _latest(candidates: list[Entity], etype: str | None = None) -> Entity | None:
+    for e in reversed(candidates):
+        if etype is None or e.type == etype:
+            return e
+    return None
+
 
 def _render(span: str, order: list[Entity]) -> str:
     """把掩码片段还原成可读文本（占位符替换回实体名）。"""
@@ -346,7 +438,7 @@ class RelationExtractor:
         for trig in TRIGGERS_BY_LENGTH:
             start = 0
             while True:
-                idx = text.find(trig, start)
+                idx = norm.find(trig, start)
                 if idx < 0:
                     break
                 occurrences.append((idx, idx + len(trig), trig, TRIGGER_INDEX[trig]))
@@ -407,7 +499,52 @@ class RelationExtractor:
             org, odist = lefts[0]
             person = self._nearest_before(ents, org.start, window=16)
             if person and person.type == "PERSON" and person.start != org.start:
-                return [self._make(person, org, rule, odist, sent, trig, "attributive", -0.03)]
+                return [self._make(person, org, rule, odist, sent, display, "attributive", -0.03)]
+
+        # ---- "后者...供应..."：后者是供应方，另一方是接收方 ----
+        if rule.key == "supply":
+            for left, ldist in lefts:
+                if left.ref_kind != "pair" or not self._same_clause(text, left.end, ts):
+                    continue
+                # "后者将向 X 供应..."：X 是显式接收方；
+                # "后者将供应..."：另一方是隐含接收方。
+                recipient = next(
+                    (
+                        e for e, _ in lefts
+                        if e is not left and e.start >= left.end and e.type == "ORG"
+                    ),
+                    left.ref_other,
+                )
+                if recipient is not None and rule.accepts(left.type, recipient.type):
+                    return [
+                        self._make(left, recipient, rule, ldist, sent, display, "coref", -0.03)
+                    ]
+
+        # ---- "宁德时代将为该工厂供应..."：供应方是"为"之前的机构 ----
+        if rule.key == "supply" and lefts and lefts[0][0].ref_kind == "single":
+            ref, _ = lefts[0]
+            for supplier, sdist in lefts[1:]:
+                if supplier.type != "ORG" or not self._same_clause(text, supplier.end, ts):
+                    continue
+                if "为" not in text[supplier.end:ref.start]:
+                    continue
+                for r, rdist in rights:
+                    if rule.accepts(supplier.type, r.type):
+                        return [
+                            self._make(
+                                supplier, r, rule, sdist + rdist, sent, display, "trigger"
+                            )
+                        ]
+                if rule.accepts(supplier.type, ref.type):
+                    return [
+                        self._make(supplier, ref, rule, sdist, sent, display, "trigger")
+                    ]
+                break
+
+        # ---- "A 与 B 签署..."：用分句主语作头实体，避免并列宾语抢主语 ----
+        comitative = self._comitative_subject(sent, ents, ts, rule, display)
+        if comitative is not None:
+            return [comitative]
 
         # ---- 分句以"并/且/也……"开头：主语继承上一分句（主语链）----
         if self._chain_clause_start(text, ts):
@@ -416,12 +553,12 @@ class RelationExtractor:
                 return [chained]
 
         # ---- 常规：触发词两侧各有一个实体（先近后远）----
-        pair = self._match_pair(lefts, rights, rule, ts, te, sent, trig)
+        pair = self._match_pair(lefts, rights, rule, sent, display)
         if pair:
             return pair
         wide_lefts = self._nearest(ents, ts, side="left", window=rule.window + 16)
         wide_rights = self._nearest(ents, te, side="right", window=rule.window + 16)
-        pair = self._match_pair(wide_lefts, wide_rights, rule, ts, te, sent, trig)
+        pair = self._match_pair(wide_lefts, wide_rights, rule, sent, display)
         if pair:
             return pair
 
@@ -438,16 +575,16 @@ class RelationExtractor:
                 patient = self._nearest_before(ents, l.start - 2, window=rule.window)
                 if patient and patient.start != l.start:
                     if rule.accepts(l.type, patient.type):
-                        return [self._make(l, patient, rule, ldist, sent, trig, "passive", -0.06)]
+                        return [self._make(l, patient, rule, ldist, sent, display, "passive", -0.06)]
                     if rule.accepts(patient.type, l.type):
-                        return [self._make(patient, l, rule, ldist, sent, trig, "passive", -0.06)]
+                        return [self._make(patient, l, rule, ldist, sent, display, "passive", -0.06)]
 
         # ---- 触发词前是 "A 和 B" 并列结构（"华为与比亚迪签署协议"）----
         if lefts:
             chain = self._conjunction_chain(text, ents, lefts[0][0])
             if len(chain) >= 2 and rule.accepts(chain[0].type, chain[-1].type):
                 return [
-                    self._make(chain[0], chain[-1], rule, 6, sent, trig, "conjunction", -0.05)
+                    self._make(chain[0], chain[-1], rule, 6, sent, display, "conjunction", -0.05)
                 ]
 
         # ---- 隐性竞争："（话题）挤压/蚕食 A 和 B 的市场份额" ----
@@ -463,7 +600,7 @@ class RelationExtractor:
                     continue
                 for head, hdist in self._nearest(ents, r.start, side="right", window=rule.window + 6):
                     if rule.accepts(head.type, r.type):
-                        return [self._make(head, r, rule, hdist + rdist, sent, trig, "postmodifier", -0.04)]
+                        return [self._make(head, r, rule, hdist + rdist, sent, display, "postmodifier", -0.04)]
 
         # ---- "的 + 职位"："阿里巴巴的创始人马云" ----
         if lefts:
@@ -587,14 +724,12 @@ class RelationExtractor:
         lefts: list[tuple[Entity, int]],
         rights: list[tuple[Entity, int]],
         rule,
-        ts: int,
-        te: int,
         sent: Sentence,
-        trig: str,
+        display: str,
     ) -> list[Triple]:
         for l, ldist in lefts:
             for r, rdist in rights:
-                if l.start == r.start:
+                if l.start == r.start and l.text == r.text:
                     continue
                 lm, rm = self._materialize(l), self._materialize(r)
                 if lm is None or rm is None or lm.start == rm.start:
