@@ -5,9 +5,17 @@
         文本输入
         <small>粘贴中文新闻，或上传 .txt</small>
       </div>
-      <span class="wb-count" :class="{ 'is-warn': charCount > 18000 }">
-        {{ charCount }}<i>/20000</i>
-      </span>
+      <div class="wb-head-right">
+        <span class="wb-count" :class="{ 'is-warn': charCount > 18000 }">
+          {{ charCount }}<i>/20000</i>
+        </span>
+        <button
+          class="wb-clear"
+          type="button"
+          :disabled="!charCount"
+          @click="clear"
+        >清空</button>
+      </div>
     </div>
 
     <div class="wb-samples">
@@ -19,6 +27,7 @@
         :class="{ 'is-active': activeSample === s.id }"
         type="button"
         :title="s.title"
+        :aria-pressed="activeSample === s.id ? 'true' : 'false'"
         @click="applySample(s)"
       >
         {{ s.title }}
@@ -32,21 +41,37 @@
       :rows="11"
       resize="none"
       maxlength="20000"
+      aria-label="待分析的文本"
       placeholder="例如：9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司全部流通股，交易总金额约为35亿美元。搜狗公司成立于2004年，总部位于北京，创始人为王小川……"
+      @keydown.ctrl.enter="submit"
+      @keydown.meta.enter="submit"
     />
 
-    <el-input v-model="title" class="wb-title" size="small" placeholder="记录标题（可选，默认截取正文）" clearable />
+    <div class="wb-foot">
+      <el-input
+        v-model="title"
+        class="wb-title"
+        size="small"
+        placeholder="记录标题（可选，默认截取正文）"
+        aria-label="记录标题"
+        clearable
+      />
 
-    <div class="wb-actions">
-      <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text">
-        <el-button :icon="Upload">上传</el-button>
-      </el-upload>
-      <div class="wb-actions-right">
-        <el-button :icon="Delete" @click="clear">清空</el-button>
-        <el-button type="primary" :icon="MagicStick" :loading="loading" @click="submit">
+      <div class="wb-actions">
+        <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text">
+          <el-button class="wb-upload" :icon="Upload">上传</el-button>
+        </el-upload>
+        <el-button
+          type="primary"
+          class="wb-run"
+          :icon="MagicStick"
+          :loading="loading"
+          @click="submit"
+        >
           {{ loading ? '分析中…' : '开始抽取' }}
         </el-button>
       </div>
+      <p class="wb-hint">Ctrl / ⌘ + Enter 快速抽取</p>
     </div>
 
     <el-collapse v-model="opened" class="wb-ability">
@@ -96,7 +121,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Delete, InfoFilled, MagicStick, Upload } from '@element-plus/icons-vue'
+import { InfoFilled, MagicStick, Upload } from '@element-plus/icons-vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -153,6 +178,7 @@ function clear() {
 }
 
 function submit() {
+  if (props.loading) return
   if (!props.modelValue.trim()) {
     ElMessage.warning('请先输入或上传一段文本')
     return
@@ -168,7 +194,8 @@ function submit() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 11px 14px 12px;
+  padding: 11px 14px 10px;
+  overflow: hidden;
 }
 
 .wb-head {
@@ -179,8 +206,14 @@ function submit() {
   min-height: 22px;
 }
 
-.wb-count {
+.wb-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: none;
+}
+
+.wb-count {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
@@ -190,11 +223,36 @@ function submit() {
 
 .wb-count i {
   font-style: normal;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .wb-count.is-warn {
   color: var(--warn);
+}
+
+/* 清空移到标题行：不再紧贴主按钮，降低误点概率 */
+.wb-clear {
+  height: 20px;
+  padding: 0 6px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+}
+
+.wb-clear:hover:not(:disabled) {
+  color: var(--danger);
+  background: #fdf6f6;
+  border-color: #f3dddd;
+}
+
+.wb-clear:disabled {
+  color: var(--faint);
+  cursor: default;
 }
 
 /* ---------- 示例 ---------- */
@@ -224,6 +282,7 @@ function submit() {
   color: var(--ink-2);
   background: var(--surface-2);
   border: 1px solid var(--line);
+  border-left: 2px solid transparent;
   border-radius: var(--r-sm);
   cursor: pointer;
   white-space: nowrap;
@@ -238,9 +297,11 @@ function submit() {
   color: var(--ink);
 }
 
+/* 选中态：填充 + 左侧墨色条，比单改描边更容易分辨 */
 .sample-chip.is-active {
-  background: var(--surface);
-  border-color: var(--brand);
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  border-left-color: var(--brand);
   color: var(--ink);
   font-weight: 500;
 }
@@ -248,7 +309,7 @@ function submit() {
 /* ---------- 输入区 ---------- */
 .wb-textarea {
   flex: 1 1 auto;
-  min-height: 190px;
+  min-height: 150px;
   display: flex;
 }
 
@@ -266,9 +327,19 @@ function submit() {
 }
 
 .wb-textarea :deep(.el-textarea__inner::placeholder) {
-  color: var(--faint);
+  color: var(--muted);
   font-size: 12.5px;
   line-height: 1.9;
+}
+
+/* ---------- 标题 + 操作：吸附在面板底部 ---------- */
+.wb-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 2px;
 }
 
 .wb-title :deep(.el-input__wrapper) {
@@ -280,34 +351,43 @@ function submit() {
   font-size: 12.5px;
 }
 
-/* ---------- 操作 ---------- */
 .wb-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-top: 2px;
-}
-
-.wb-actions-right {
-  display: flex;
   gap: 6px;
 }
 
 .wb-actions :deep(.el-button) {
-  height: 30px;
+  height: 32px;
   padding: 0 12px;
   font-size: 12.5px;
 }
 
+.wb-actions :deep(.el-upload) {
+  flex: none;
+}
+
+/* 主操作占满剩余宽度：整块都是热区，不会点空 */
+.wb-run {
+  flex: 1;
+}
+
+.wb-hint {
+  margin: -2px 0 0;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-align: right;
+}
+
 /* ---------- 能力面板 ---------- */
 .wb-ability {
+  flex: none;
   border-top: 1px solid var(--line);
   border-bottom: none;
 }
 
 .wb-ability :deep(.el-collapse-item__header) {
-  height: 32px;
+  height: 28px;
   border-bottom: none;
   font-size: 11.5px;
   color: var(--muted);
@@ -321,6 +401,8 @@ function submit() {
 
 .wb-ability :deep(.el-collapse-item__content) {
   padding-bottom: 8px;
+  max-height: 220px;
+  overflow: auto;
 }
 
 .wb-ability-title {
@@ -335,7 +417,7 @@ function submit() {
 
 .ability-label {
   font-size: 10.5px;
-  color: var(--faint);
+  color: var(--muted);
   letter-spacing: 0.8px;
   margin-bottom: 5px;
   text-transform: uppercase;
@@ -360,6 +442,6 @@ function submit() {
   margin: 4px 0 0;
   font-size: 11px;
   line-height: 1.75;
-  color: var(--faint);
+  color: var(--muted);
 }
 </style>

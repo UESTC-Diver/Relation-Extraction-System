@@ -2,7 +2,7 @@
   <div class="graph">
     <div class="graph-toolbar">
       <div class="gt-left">
-        <el-radio-group v-model="layout" size="small">
+        <el-radio-group v-model="layout" size="small" aria-label="图谱布局">
           <el-radio-button value="force">力导向</el-radio-button>
           <el-radio-button value="circular">环形</el-radio-button>
         </el-radio-group>
@@ -10,17 +10,31 @@
         <el-checkbox v-model="mergeNodes" size="small">合并同义实体</el-checkbox>
       </div>
       <div class="gt-right">
+        <span class="gt-hint">点节点可下钻到三元组</span>
         <span class="gt-count">{{ nodes.length }} 节点 · {{ edges.length }} 边</span>
-        <el-button :icon="Refresh" @click="resetView">重置</el-button>
+        <el-button :icon="Refresh" @click="relayout">重新布局</el-button>
         <el-button :icon="Picture" @click="savePng">导出图片</el-button>
       </div>
     </div>
 
     <div class="graph-canvas-wrap">
-      <div ref="canvasRef" class="graph-canvas"></div>
+      <div
+        ref="canvasRef"
+        class="graph-canvas"
+        tabindex="0"
+        role="application"
+        aria-label="关系图谱。左右方向键逐个选中节点，回车查看该实体的三元组"
+        @keydown="onCanvasKeydown"
+      ></div>
+
+      <p class="sr-only" aria-live="polite">{{ kbdStatus }}</p>
+
       <div v-if="!edges.length" class="graph-empty">
         <el-empty description="没有可绘制的关系，换一段文本试试" :image-size="80" />
       </div>
+
+      <div v-if="kbdLabel" class="kbd-chip" aria-hidden="true">{{ kbdLabel }}</div>
+
       <div v-if="categories.length" class="graph-legend">
         <span v-for="c in categories" :key="c.name" class="gl-item">
           <i :style="{ background: c.itemStyle.color }"></i>{{ c.name }}
@@ -41,13 +55,20 @@ const props = defineProps({
   schema: { type: Object, default: () => ({}) },
 })
 
+const emit = defineEmits(['focus-entity'])
+
 const canvasRef = ref(null)
 const layout = ref('force')
-const showEdgeLabel = ref(true)
+// 默认不显示连线标签：多条关系指向同一对节点时标签必然互相压字，
+// 关系名交给悬停提示和三元组表格，勾选可随时打开
+const showEdgeLabel = ref(false)
 const mergeNodes = ref(true)
+const kbdIndex = ref(-1)
+const kbdStatus = ref('')
 
 let chart = null
 let observer = null
+let pointerStart = null
 
 const entityMap = computed(() => {
   const map = {}
@@ -106,6 +127,12 @@ const graphData = computed(() => {
 const nodes = computed(() => graphData.value.nodes)
 const edges = computed(() => graphData.value.edges)
 
+const kbdLabel = computed(() => {
+  const n = nodes.value[kbdIndex.value]
+  if (!n) return ''
+  return `${n.name} · ${typeLabel(n.type)} · ${n.degree} 条关系（回车下钻）`
+})
+
 const categories = computed(() => {
   const seen = []
   for (const n of nodes.value) {
@@ -158,7 +185,7 @@ function buildOption() {
       formatter: e.label,
       position: 'middle',
       rotate: 0,
-      fontSize: 9.5,
+      fontSize: 10,
       color: '#494f57',
       backgroundColor: 'rgba(255,255,255,0.94)',
       borderColor: 'rgba(16,18,22,0.06)',
@@ -173,7 +200,7 @@ function buildOption() {
 
   return {
     backgroundColor: 'transparent',
-    animationDuration: 600,
+    animationDuration: 480,
     tooltip: {
       confine: true,
       backgroundColor: 'rgba(23,24,28,0.94)',
@@ -204,13 +231,14 @@ function buildOption() {
         },
         edgeSymbol: ['none', 'arrow'],
         edgeSymbolSize: [0, 6],
-        labelLayout: { hideOverlap: false },
+        // 节点名互相挤开而不是直接隐藏 —— 藏掉名字比挤开更糟
+        labelLayout: { hideOverlap: false, moveOverlap: 'shiftY' },
         force:
           layout.value === 'force'
             ? {
-                repulsion: 1500,
-                edgeLength: [168, 250],
-                gravity: 0.06,
+                repulsion: 900,
+                edgeLength: [110, 175],
+                gravity: 0.12,
                 friction: 0.2,
                 layoutAnimation: true,
               }
@@ -234,10 +262,15 @@ function render() {
     return
   }
   chart.setOption(buildOption(), true)
+  kbdIndex.value = -1
+  kbdStatus.value = ''
 }
 
-function resetView() {
-  if (chart && nodes.value.length) chart.setOption(buildOption(), true)
+function relayout() {
+  if (chart && nodes.value.length) {
+    render()
+    chart.resize()
+  }
 }
 
 /** 返回当前图谱的 PNG dataURL，无图时返回 null。供结果面板的导出菜单调用。 */
@@ -259,6 +292,38 @@ function savePng() {
   ElMessage.success('关系图已导出')
 }
 
+/* ---------- 点节点下钻 ---------- */
+function drill(node) {
+  if (!node) return
+  emit('focus-entity', { name: node.name, type: node.type, key: node.key })
+}
+
+/* ---------- 键盘浏览：方向键选节点，回车下钻 ---------- */
+function onCanvasKeydown(event) {
+  const list = nodes.value
+  if (!list.length) return
+  if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    event.preventDefault()
+    kbdIndex.value = (kbdIndex.value + 1) % list.length
+    applyKbdHighlight()
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    kbdIndex.value = kbdIndex.value <= 0 ? list.length - 1 : kbdIndex.value - 1
+    applyKbdHighlight()
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    drill(list[kbdIndex.value])
+  }
+}
+
+function applyKbdHighlight() {
+  const n = nodes.value[kbdIndex.value]
+  if (!chart || !n) return
+  chart.dispatchAction({ type: 'downplay', seriesIndex: 0 })
+  chart.dispatchAction({ type: 'highlight', seriesIndex: 0, name: n.name })
+  kbdStatus.value = `${n.name}，${typeLabel(n.type)}，${n.degree} 条关系，回车查看三元组`
+}
+
 defineExpose({ snapshot })
 
 onMounted(async () => {
@@ -268,6 +333,20 @@ onMounted(async () => {
     render()
     observer = new ResizeObserver(() => chart && chart.resize())
     observer.observe(canvasRef.value)
+
+    // 拖拽节点后松手也会触发 click —— 用位移阈值挡掉，避免误下钻
+    chart.getZr().on('mousedown', (e) => {
+      pointerStart = { x: e.offsetX, y: e.offsetY }
+    })
+    chart.on('click', (params) => {
+      if (params.dataType !== 'node') return
+      if (pointerStart) {
+        const dx = Math.abs(params.event?.offsetX - pointerStart.x || 0)
+        const dy = Math.abs(params.event?.offsetY - pointerStart.y || 0)
+        if (dx + dy > 6) return
+      }
+      drill(nodes.value.find((n) => n.name === params.name))
+    })
   }
 })
 
@@ -307,6 +386,11 @@ watch([layout, showEdgeLabel, mergeNodes], render)
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.gt-hint {
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .gt-count {
@@ -359,6 +443,7 @@ watch([layout, showEdgeLabel, mergeNodes], render)
 .graph-canvas {
   width: 100%;
   height: 100%;
+  outline-offset: -2px;
 }
 
 .graph-empty {
@@ -367,6 +452,24 @@ watch([layout, showEdgeLabel, mergeNodes], render)
   display: grid;
   place-items: center;
   background: rgba(255, 255, 255, 0.86);
+}
+
+/* 键盘选中的节点说明 */
+.kbd-chip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: calc(100% - 20px);
+  padding: 4px 9px;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 2px 8px rgba(16, 18, 22, 0.06);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .graph-legend {
