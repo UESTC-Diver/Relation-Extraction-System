@@ -69,15 +69,11 @@ def root():
 
 
 if FRONTEND_DIST.exists():
-    DIST_ROOT = FRONTEND_DIST.resolve()
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str):
-        # 只允许命中 dist 目录内的真实文件；任何解析到 dist 之外的路径
-        # （如 /..%2f..%2fbackend%2fapp%2fdb.py）都退化为 SPA 入口，
-        # 避免把源码或数据库当成静态资源吐出去。
-        target = (FRONTEND_DIST / full_path).resolve()
-        if target.is_file() and target.is_relative_to(DIST_ROOT):
-            return FileResponse(target)
+        candidate = FRONTEND_DIST / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
         return FileResponse(FRONTEND_DIST / "index.html")
