@@ -199,6 +199,7 @@ const RULE_LABEL = {
   conjunction: '并列结构',
   postmodifier: '后置定语',
   attributive: '职位线索',
+  coref: '指代消解',
 }
 
 function ruleLabel(base) {
