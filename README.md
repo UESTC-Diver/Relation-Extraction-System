@@ -70,13 +70,15 @@
 │  │  └─ routers/
 │  │     ├─ extract.py        # /api/extract、/api/extract/file、/api/health
 │  │     └─ meta.py           # /api/records、/api/stats、/api/samples、/api/schema
-│  ├─ data/app.db             # SQLite 数据文件（首次运行自动创建，WAL 模式）
+│  ├─ data/app.db             # SQLite 数据文件（首次运行自动创建，WAL 模式；APP_DB_PATH 可改路径）
 │  ├─ devtools/check.py       # 离线自检脚本：对内置示例跑抽取并打印结果
+│  ├─ tests/                  # pytest 接口回归测试（16 条，含路径穿越与编码识别）
 │  ├─ eval/
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # P/R/F1 评测脚本（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  └─ requirements.txt
+│  ├─ requirements.txt        # 运行依赖
+│  └─ requirements-dev.txt    # 测试依赖（pytest / httpx）
 ├─ frontend/
 │  ├─ src/
 │  │  ├─ App.vue              # 顶栏 + 双栏布局 + 四个结果页签 + 历史抽屉
@@ -148,7 +150,24 @@ python devtools/check.py
 
 脚本会对 4 条内置示例执行抽取，打印实体数与三元组明细，用于回归验证 NLP 模块。
 
-### 5. 效果评测
+### 5. 接口回归测试
+
+```bash
+cd backend
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+16 条用例，每个用例用临时 SQLite 文件，不碰 `backend/data/app.db`。覆盖四类「改坏了会悄悄出事」的地方：
+
+| 用例组 | 断言内容 |
+| --- | --- |
+| 结果基线 | 内置示例必须抽出 18 实体 / 9 三元组，词典或规则被改崩时立刻失败 |
+| 输入校验 | 空文本 400、超长 413、非 txt 415、记录不存在 404 |
+| 编码识别 | UTF-8 / GBK / BIG5 / UTF-16 四种编码上传后解码文本必须与原文逐字相等 |
+| 静态资源边界 | `..%2f..%2f` 路径穿越不能取到源码或 README，正常路由和 SPA 回退仍可用 |
+
+### 6. 效果评测
 
 ```bash
 cd backend
