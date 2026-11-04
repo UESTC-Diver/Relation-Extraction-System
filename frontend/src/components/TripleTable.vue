@@ -9,6 +9,7 @@
           collapse-tags-tooltip
           clearable
           placeholder="全部关系类型"
+          aria-label="按关系类型筛选"
           class="rel-select"
         >
           <el-option
@@ -30,13 +31,34 @@
           placeholder="搜索实体 / 关系"
           clearable
           :prefix-icon="Search"
+          aria-label="搜索实体或关系"
           class="kw"
         />
 
-        <div class="conf">
-          <span class="conf-label">置信度 ≥ {{ minConf.toFixed(2) }}</span>
-          <el-slider v-model="minConf" :min="0.5" :max="0.99" :step="0.01" />
+        <div class="conf-seg" role="group" aria-label="按置信度筛选">
+          <button
+            v-for="p in CONF_PRESETS"
+            :key="p.value"
+            class="conf-item"
+            :class="{ 'is-active': minConf === p.value }"
+            type="button"
+            :aria-pressed="minConf === p.value ? 'true' : 'false'"
+            @click="minConf = p.value"
+          >
+            {{ p.label }}
+          </button>
         </div>
+
+        <button
+          v-if="entityFilter"
+          class="filter-chip"
+          type="button"
+          :title="`取消「${entityFilter.name}」筛选`"
+          @click="emit('clear-filter')"
+        >
+          实体：{{ entityFilter.name }}
+          <el-icon :size="11"><Close /></el-icon>
+        </button>
       </div>
 
       <div class="tb-right">
@@ -46,7 +68,12 @@
     </div>
 
     <div class="table-wrap">
-      <el-table :data="filtered" height="100%" empty-text="没有符合条件的三元组">
+      <el-table
+        :data="filtered"
+        height="100%"
+        :empty-text="emptyText"
+        row-key="_rid"
+      >
         <el-table-column type="expand" width="30">
           <template #default="{ row }">
             <div class="evidence-block">
@@ -114,6 +141,20 @@
             <span class="trigger">{{ row.trigger || '—' }}</span>
           </template>
         </el-table-column>
+
+        <el-table-column label="操作" width="72" align="center">
+          <template #default="{ row }">
+            <button
+              class="locate-btn"
+              type="button"
+              :aria-label="`定位第 ${(row.sentence_index ?? 0) + 1} 句证据句`"
+              :title="`第 ${(row.sentence_index ?? 0) + 1} 句 · 跳到原文`"
+              @click="emit('locate', row.sentence_index)"
+            >
+              原文
+            </button>
+          </template>
+        </el-table-column>
       </el-table>
     </div>
   </div>
@@ -122,16 +163,25 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Download, Search } from '@element-plus/icons-vue'
+import { Close, Download, Search } from '@element-plus/icons-vue'
 
 const props = defineProps({
   relations: { type: Array, default: () => [] },
   schema: { type: Object, default: () => ({}) },
+  entityFilter: { type: Object, default: null },
 })
+
+const emit = defineEmits(['locate', 'clear-filter'])
 
 const picked = ref([])
 const keyword = ref('')
-const minConf = ref(0.5)
+const minConf = ref(0)
+
+const CONF_PRESETS = [
+  { value: 0, label: '全部' },
+  { value: 0.75, label: '≥ 0.75' },
+  { value: 0.9, label: '≥ 0.90' },
+]
 
 const entityMap = computed(() => {
   const map = {}
@@ -153,22 +203,34 @@ const relationOptions = computed(() => {
       key,
       count,
       label: relMap.value[key]?.label || key,
-      color: relMap.value[key]?.color || '#64748b',
+      color: relMap.value[key]?.color || '#6b7280',
     }))
     .sort((a, b) => b.count - a.count)
 })
 
 const filtered = computed(() => {
-  const kw = keyword.value.trim()
-  return props.relations.filter((r) => {
-    if (picked.value.length && !picked.value.includes(r.relation)) return false
-    if (r.confidence < minConf.value) return false
-    if (!kw) return true
-    return [r.head, r.tail, r.relation_label, r.evidence, r.trigger]
-      .join(' ')
-      .toLowerCase()
-      .includes(kw.toLowerCase())
-  })
+  const kw = keyword.value.trim().toLowerCase()
+  const ef = props.entityFilter
+  return props.relations
+    .map((r, i) => ({ ...r, _rid: i }))
+    .filter((r) => {
+      if (picked.value.length && !picked.value.includes(r.relation)) return false
+      if (r.confidence < minConf.value) return false
+      if (ef && r.head !== ef.name && r.tail !== ef.name) {
+        if (r.head_canonical !== ef.name && r.tail_canonical !== ef.name) return false
+      }
+      if (!kw) return true
+      return [r.head, r.tail, r.relation_label, r.evidence, r.trigger]
+        .join(' ')
+        .toLowerCase()
+        .includes(kw)
+    })
+})
+
+const emptyText = computed(() => {
+  if (!props.relations.length) return '这段文本没有抽出关系，换一段包含「收购 / 投资 / 任职 / 总部位于」等表述的文本试试'
+  if (props.entityFilter) return `「${props.entityFilter.name}」没有关系记录，点上方标签取消筛选`
+  return '没有符合条件的三元组，试试放宽置信度或清空搜索'
 })
 
 function typeLabel(type) {
@@ -176,7 +238,7 @@ function typeLabel(type) {
 }
 
 function tagStyle(type) {
-  const color = entityMap.value[type]?.color || '#64748b'
+  const color = entityMap.value[type]?.color || '#6b7280'
   return { color: 'var(--ink)', background: color + '14', borderColor: color + '33' }
 }
 
@@ -189,7 +251,7 @@ function pillStyle(key) {
 function confColor(v) {
   if (v >= 0.9) return '#15803d'
   if (v >= 0.75) return '#b45309'
-  return '#9aa1a9'
+  return '#6b7280'
 }
 
 const RULE_LABEL = {
@@ -200,6 +262,7 @@ const RULE_LABEL = {
   postmodifier: '后置定语',
   attributive: '职位线索',
   coref: '指代消解',
+  chain: '主语链',
 }
 
 function ruleLabel(base) {
@@ -259,33 +322,73 @@ function exportCsv() {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .rel-select {
-  width: 190px;
+  width: 178px;
 }
 
 .kw {
-  width: 172px;
+  width: 164px;
 }
 
-.conf {
-  display: flex;
+/* 置信度：三档互斥按钮，替代拖不准的连续滑杆 */
+.conf-seg {
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 2px;
+  padding: 2px;
+  height: 28px;
+  background: var(--surface-3);
+  border-radius: var(--r-sm);
 }
 
-.conf-label {
+.conf-item {
+  height: 24px;
+  padding: 0 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-xs);
+  font-family: inherit;
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.conf-item:hover {
+  color: var(--ink);
+}
+
+.conf-item.is-active {
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(16, 18, 22, 0.1);
+}
+
+/* 图谱下钻带过来的实体筛选 */
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: #1d3fb8;
+  background: #eef2ff;
+  border: 1px solid #c7d2f8;
+  border-radius: var(--r-sm);
+  cursor: pointer;
   white-space: nowrap;
 }
 
-.conf :deep(.el-slider) {
-  width: 92px;
-  --el-slider-height: 3px;
-  --el-slider-button-size: 12px;
+.filter-chip:hover {
+  background: #e3e9ff;
 }
 
 .tb-right {
@@ -326,7 +429,7 @@ function exportCsv() {
 }
 
 .opt b {
-  color: var(--faint);
+  color: var(--muted);
   font-weight: 500;
   font-size: 11px;
 }
@@ -410,7 +513,7 @@ function exportCsv() {
 .cell-type {
   margin-left: 5px;
   font-size: 10.5px;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .rel-pill {
@@ -457,6 +560,26 @@ function exportCsv() {
   background: var(--surface-3);
 }
 
+/* 【创新点 1】定位原文：把“这关系凭什么抽出来”压到一次点击 */
+.locate-btn {
+  height: 22px;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--ink-2);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.locate-btn:hover {
+  background: #eef2ff;
+  border-color: #c7d2f8;
+  color: #1d3fb8;
+}
+
 /* ---------- 展开区 ---------- */
 .evidence-block {
   padding: 12px 16px 13px 46px;
@@ -489,7 +612,7 @@ function exportCsv() {
 
 .meta-item em {
   font-style: normal;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .meta-item b {

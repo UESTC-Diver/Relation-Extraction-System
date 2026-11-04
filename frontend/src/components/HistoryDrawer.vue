@@ -34,27 +34,31 @@
         :key="item.id"
         class="hd-item"
         :class="{ 'is-active': activeId === item.id }"
-        @click="open(item.id)"
       >
-        <div class="hd-item-main">
-          <div class="hd-item-title">{{ item.title || '未命名记录' }}</div>
-          <div class="hd-item-meta">
+        <button
+          class="hd-item-main"
+          type="button"
+          :aria-label="`载入「${item.title || '未命名记录'}」，${item.entity_count} 个实体，${item.relation_count} 条关系`"
+          @click="open(item.id)"
+        >
+          <span class="hd-item-title">{{ item.title || '未命名记录' }}</span>
+          <span class="hd-item-meta">
             <span class="hd-time">{{ item.created_at }}</span>
             <span class="hd-sep">·</span>
             <span>{{ item.entity_count }} 实体</span>
             <span class="hd-sep">·</span>
             <span>{{ item.relation_count }} 关系</span>
             <span v-if="item.source === 'file'" class="badge">文件</span>
-          </div>
-        </div>
-        <div class="hd-item-actions" @click.stop>
-          <el-button link size="small" @click="open(item.id)">载入</el-button>
-          <el-popconfirm title="删除这条记录？" @confirm="remove(item.id)">
-            <template #reference>
-              <el-button link size="small" class="del">删除</el-button>
-            </template>
-          </el-popconfirm>
-        </div>
+          </span>
+          <span class="hd-chevron" aria-hidden="true">›</span>
+        </button>
+        <el-popconfirm title="删除这条记录？删除后不可恢复。" @confirm="remove(item.id)">
+          <template #reference>
+            <button class="hd-del" type="button" :aria-label="`删除「${item.title || '未命名记录'}」`">
+              删除
+            </button>
+          </template>
+        </el-popconfirm>
       </div>
 
       <el-empty v-if="!loading && !items.length" description="还没有抽取记录" :image-size="72" />
@@ -210,11 +214,10 @@ defineExpose({ refresh })
 .hd-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 8px 9px 6px;
+  gap: 6px;
+  padding: 3px 6px 3px 4px;
   border-bottom: 1px solid var(--line);
   border-radius: var(--r-sm);
-  cursor: pointer;
   transition: background 0.12s ease;
 }
 
@@ -227,12 +230,41 @@ defineExpose({ refresh })
   box-shadow: inset 2px 0 0 var(--brand);
 }
 
+/* 整行即「载入」按钮：键盘可达，不再依赖 hover 才出现的链接 */
 .hd-item-main {
   flex: 1;
   min-width: 0;
+  display: block;
+  position: relative;
+  padding: 6px 16px 6px 4px;
+  border: none;
+  background: transparent;
+  border-radius: var(--r-xs);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 行末的 › 提示"整行可载入"，避免只剩一个"删除"看着像删除列表 */
+.hd-chevron {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 15px;
+  line-height: 1;
+  color: var(--faint);
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+
+.hd-item:hover .hd-chevron,
+.hd-item-main:focus-visible .hd-chevron {
+  color: var(--ink-2);
+  transform: translateY(-50%) translateX(1px);
 }
 
 .hd-item-title {
+  display: block;
   font-size: 12.5px;
   font-weight: 500;
   color: var(--ink);
@@ -273,32 +305,26 @@ defineExpose({ refresh })
   border: 1px solid var(--line);
 }
 
-.hd-item-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
+/* 删除：常显但低对比，hover / 聚焦时才提示危险色 */
+.hd-del {
   flex: none;
-  opacity: 0;
-  transition: opacity 0.14s ease;
+  height: 24px;
+  padding: 0 7px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
 }
 
-.hd-item:hover .hd-item-actions,
-.hd-item.is-active .hd-item-actions {
-  opacity: 1;
-}
-
-.hd-item-actions :deep(.el-button) {
-  font-size: 11.5px;
-  padding: 0 4px;
-  height: 22px;
-}
-
-.hd-item-actions :deep(.del) {
-  color: var(--faint);
-}
-
-.hd-item-actions :deep(.del:hover) {
+.hd-del:hover,
+.hd-del:focus-visible {
   color: var(--danger);
+  background: #fdf6f6;
+  border-color: #f3dddd;
 }
 
 .hd-footer {
