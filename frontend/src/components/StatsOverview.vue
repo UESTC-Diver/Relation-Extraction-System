@@ -77,16 +77,25 @@
       <section class="stat-card sentence-card">
         <div class="stat-head">
           <span>句子明细</span>
-          <span class="stat-sub">{{ result?.sentences?.length || 0 }} 句</span>
+          <span class="stat-sub">{{ result?.sentences?.length || 0 }} 句 · 点任一句定位原文</span>
         </div>
         <el-scrollbar class="sentences">
-          <div v-for="s in result?.sentences || []" :key="s.index" class="sentence-row">
+          <button
+            v-for="s in result?.sentences || []"
+            :key="s.index"
+            class="sentence-row"
+            :class="{ 'has-rel': countBySentence(s.index) }"
+            type="button"
+            :aria-label="`第 ${s.index + 1} 句，${countBySentence(s.index)} 条关系，点击定位原文`"
+            @click="emit('locate', s.index)"
+          >
             <span class="sentence-idx">{{ s.index + 1 }}</span>
             <span class="sentence-text">{{ s.text }}</span>
             <span class="sentence-rel" v-if="countBySentence(s.index)">
               {{ countBySentence(s.index) }} 条
             </span>
-          </div>
+          </button>
+          <el-empty v-if="!(result?.sentences || []).length" description="没有分句结果" :image-size="60" />
         </el-scrollbar>
       </section>
     </div>
@@ -101,6 +110,8 @@ const props = defineProps({
   stats: { type: Object, default: () => ({}) },
   schema: { type: Object, default: () => ({}) },
 })
+
+const emit = defineEmits(['locate'])
 
 const global = computed(() => props.stats || {})
 
@@ -225,7 +236,8 @@ function countBySentence(idx) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
   gap: 12px;
-  align-items: start;
+  /* 同排卡片等高，避免底边参差 */
+  align-items: stretch;
 }
 
 .stat-card {
@@ -350,7 +362,7 @@ function countBySentence(idx) {
 
 .hot-label {
   font-size: 11px;
-  color: var(--faint);
+  color: var(--muted);
   margin-right: 2px;
 }
 
@@ -377,14 +389,27 @@ function countBySentence(idx) {
 }
 
 .sentence-row {
+  width: 100%;
   display: flex;
   align-items: baseline;
   gap: 8px;
-  padding: 6px 2px;
+  padding: 6px 4px;
+  border: none;
   border-bottom: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: transparent;
+  font-family: inherit;
   font-size: 12px;
   line-height: 1.75;
   color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.sentence-row:hover {
+  background: var(--surface-3);
+  color: var(--ink);
 }
 
 .sentence-row:last-child {
@@ -412,8 +437,12 @@ function countBySentence(idx) {
 
 .sentence-rel {
   flex: none;
+  padding: 0 5px;
   font-size: 10.5px;
-  color: var(--ok);
+  line-height: 16px;
+  color: #1d3fb8;
+  background: #eef2ff;
+  border-radius: var(--r-xs);
   font-variant-numeric: tabular-nums;
 }
 

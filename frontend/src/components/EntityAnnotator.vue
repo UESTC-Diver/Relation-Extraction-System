@@ -1,29 +1,38 @@
 <template>
   <div class="annotator">
-    <div class="legend">
+    <div class="legend" role="group" aria-label="按实体类型筛选高亮">
       <button
         v-for="t in schema.entity_types || []"
         :key="t.key"
         class="legend-chip"
         :class="{ 'is-off': hidden.includes(t.key), 'is-empty': !typeCounts[t.key] }"
         type="button"
+        :disabled="!typeCounts[t.key]"
+        :aria-pressed="hidden.includes(t.key) ? 'false' : 'true'"
+        :aria-label="`${t.label}，${typeCounts[t.key] || 0} 个${hidden.includes(t.key) ? '，已隐藏' : ''}`"
         @click="toggle(t.key)"
       >
-        <i class="dot" :style="{ background: t.color }"></i>
+        <i class="dot" :class="{ 'is-hollow': hidden.includes(t.key) }" :style="{ '--c': t.color }"></i>
         <span>{{ t.label }}</span>
         <b>{{ typeCounts[t.key] || 0 }}</b>
       </button>
-      <span class="legend-tip">点击切换显示</span>
+      <span class="legend-tip">点击类型可隐藏／恢复高亮</span>
     </div>
 
     <div class="annotator-main">
-      <div class="doc">
-        <p class="doc-text">
-          <template v-for="(seg, i) in segments" :key="i">
+      <div ref="docRef" class="doc">
+        <p
+          v-for="block in blocks"
+          :key="block.start"
+          class="sent"
+          :class="{ 'is-focus': focusIndex === block.index && block.index >= 0 }"
+          :data-idx="block.index"
+        >
+          <template v-for="(seg, i) in block.segs" :key="i">
             <span v-if="!seg.type" class="plain">{{ seg.text }}</span>
-            <span
+            <button
               v-else
-              :id="'ent-' + seg.key"
+              type="button"
               class="ent"
               :class="{ 'is-flash': flashKey === seg.key, 'is-dim': hidden.includes(seg.type) }"
               :style="{
@@ -33,36 +42,47 @@
                 '--c-line': seg.color + 'a6',
               }"
               :data-type="seg.typeLabel"
+              :data-key="seg.key"
+              :aria-label="`${seg.text}，实体类型${seg.typeLabel}，回车定位到实体清单`"
               @click="onEntityClick(seg)"
-            >
-              {{ seg.text }}
-            </span>
+            >{{ seg.text }}</button>
           </template>
+          <button
+            v-if="block.relCount"
+            class="sent-badge"
+            type="button"
+            :aria-label="`第 ${block.index + 1} 句，含 ${block.relCount} 条关系，点击查看`"
+            @click="onSentenceClick(block)"
+          >{{ block.relCount }} 条关系</button>
         </p>
+
+        <el-empty v-if="!hasText" description="没有可展示的原文" :image-size="64" />
       </div>
 
-      <aside class="entity-side">
+      <aside class="entity-side" aria-label="实体清单">
         <div class="side-head">
           <span>实体清单</span>
           <span class="side-count">{{ uniqueEntities.length }}</span>
         </div>
-        <el-scrollbar class="side-scroll">
+        <el-scrollbar ref="sideScrollRef" class="side-scroll">
           <button
             v-for="e in uniqueEntities"
             :key="e.key"
             class="entity-row"
             :class="{ 'is-active': flashKey === e.key }"
             type="button"
+            :data-ekey="e.key"
+            :aria-pressed="flashKey === e.key ? 'true' : 'false'"
             :title="aliasTitle(e)"
             @click="focusEntity(e.key)"
           >
-            <i class="dot" :style="{ background: colorOf(e.type) }"></i>
+            <i class="dot" :style="{ '--c': colorOf(e.type) }"></i>
             <span class="entity-text">
-              <span class="entity-name">
-                {{ e.text }}
-                <i v-if="e.aliases.length > 1" class="merge-mark" aria-hidden="true"></i>
+              <span class="entity-name">{{ e.text }}</span>
+              <span class="entity-meta">
+                {{ labelOf(e.type) }} · {{ e.count }} 次
+                <template v-if="e.aliases.length > 1"> · {{ e.aliases.length }} 种写法</template>
               </span>
-              <span class="entity-meta">{{ labelOf(e.type) }} · {{ e.count }} 次</span>
             </span>
           </button>
           <el-empty v-if="!uniqueEntities.length" description="未识别到实体" :image-size="64" />
@@ -73,15 +93,21 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 const props = defineProps({
   result: { type: Object, default: null },
   schema: { type: Object, default: () => ({}) },
+  link: { type: Object, default: null },
 })
 
 const hidden = ref([])
 const flashKey = ref('')
+const focusIndex = ref(-1)
+const docRef = ref(null)
+const sideScrollRef = ref(null)
+let flashTimer = 0
+let focusTimer = 0
 
 const typeMap = computed(() => {
   const map = {}
@@ -90,13 +116,17 @@ const typeMap = computed(() => {
 })
 
 function colorOf(type) {
-  return typeMap.value[type]?.color || '#64748b'
+  return typeMap.value[type]?.color || '#6b7280'
 }
 function labelOf(type) {
   return typeMap.value[type]?.label || type
 }
 
+const hasText = computed(() => Boolean(props.result?.text))
+const typeCounts = computed(() => props.result?.entity_type_counts || {})
+
 function toggle(key) {
+  if (!typeCounts.value[key]) return
   const i = hidden.value.indexOf(key)
   if (i >= 0) hidden.value.splice(i, 1)
   else hidden.value.push(key)
@@ -107,6 +137,7 @@ function keyOf(e) {
   return `${e.type}:${e.canonical || e.text}`
 }
 
+/* ---------- 正文切分：先按实体切片，再按句子成块 ---------- */
 const segments = computed(() => {
   const data = props.result
   if (!data) return []
@@ -116,9 +147,13 @@ const segments = computed(() => {
   let cursor = 0
   for (const e of ents) {
     if (e.start < cursor) continue
-    if (e.start > cursor) out.push({ text: text.slice(cursor, e.start) })
+    if (e.start > cursor) {
+      out.push({ text: text.slice(cursor, e.start), start: cursor, end: e.start })
+    }
     out.push({
       text: text.slice(e.start, e.end),
+      start: e.start,
+      end: e.end,
       type: e.type,
       color: colorOf(e.type),
       typeLabel: labelOf(e.type),
@@ -126,11 +161,94 @@ const segments = computed(() => {
     })
     cursor = e.end
   }
-  if (cursor < text.length) out.push({ text: text.slice(cursor) })
+  if (cursor < text.length) out.push({ text: text.slice(cursor), start: cursor, end: text.length })
   return out
 })
 
-const typeCounts = computed(() => props.result?.entity_type_counts || {})
+/**
+ * 句子区间。优先用后端给的 start/end 偏移；
+ * 历史记录重建的 sentences 没有偏移，退回「按原文顺序匹配」；
+ * 两条路都失败就整体返回 null，正文退化为单块渲染 —— 永远保留降级路径。
+ */
+const sentRanges = computed(() => {
+  const data = props.result
+  const text = data?.text || ''
+  const sents = data?.sentences || []
+  if (!sents.length) return null
+
+  const hasOffsets = sents.every(
+    (s) => Number.isInteger(s.start) && Number.isInteger(s.end) && s.end > s.start,
+  )
+
+  const out = []
+  if (hasOffsets) {
+    let cursor = 0
+    for (const s of sents) {
+      // 出现重叠或倒序说明数据不可信，直接放弃句子级渲染
+      if (s.start < cursor || s.end > text.length) return null
+      out.push({ index: s.index, start: s.start, end: s.end })
+      cursor = s.end
+    }
+    return out
+  }
+
+  let cursor = 0
+  for (const s of sents) {
+    if (!s.text) return null
+    const at = text.indexOf(s.text, cursor)
+    if (at < 0) return null
+    out.push({ index: s.index, start: at, end: at + s.text.length })
+    cursor = at + s.text.length
+  }
+  return out
+})
+
+function sliceSegs(segs, start, end) {
+  const out = []
+  for (const s of segs) {
+    if (s.end <= start || s.start >= end) continue
+    const a = Math.max(s.start, start)
+    const b = Math.min(s.end, end)
+    out.push({ ...s, text: s.text.slice(a - s.start, b - s.start) })
+  }
+  return out
+}
+
+const relBySentence = computed(() => {
+  const map = {}
+  for (const r of props.result?.relations || []) {
+    map[r.sentence_index] = (map[r.sentence_index] || 0) + 1
+  }
+  return map
+})
+
+const blocks = computed(() => {
+  const data = props.result
+  if (!data) return []
+  const text = data.text || ''
+  const segs = segments.value
+  const ranges = sentRanges.value
+
+  const make = (index, start, end) => ({
+    index,
+    start,
+    end,
+    segs: sliceSegs(segs, start, end),
+    relCount: index >= 0 ? relBySentence.value[index] || 0 : 0,
+  })
+
+  if (!ranges) return [make(-1, 0, text.length)]
+
+  const out = []
+  let cursor = 0
+  for (const r of ranges) {
+    if (r.start > cursor) out.push(make(-1, cursor, r.start))
+    out.push(make(r.index, r.start, r.end))
+    cursor = r.end
+  }
+  if (cursor < text.length) out.push(make(-1, cursor, text.length))
+  return out.filter((b) => b.segs.length)
+})
 
 const uniqueEntities = computed(() => {
   const map = new Map()
@@ -159,21 +277,68 @@ function aliasTitle(e) {
   return e.aliases.length > 1 ? `${base}｜已合并写法：${e.aliases.join('、')}` : base
 }
 
+const reducedMotion = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+function scrollTo(selector) {
+  const el = docRef.value?.querySelector(selector)
+  if (el) {
+    el.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' })
+  }
+  return el
+}
+
 function focusEntity(key) {
   flashKey.value = key
-  const el = document.getElementById('ent-' + key)
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  window.setTimeout(() => {
+  scrollTo(`[data-key="${CSS.escape(key)}"]`)
+  clearTimeout(flashTimer)
+  flashTimer = window.setTimeout(() => {
     if (flashKey.value === key) flashKey.value = ''
-  }, 2200)
+  }, 2400)
 }
 
 function onEntityClick(seg) {
   flashKey.value = seg.key
-  window.setTimeout(() => {
+  // 反向同步：正文点实体 → 实体清单滚到对应条目
+  nextTick(() => {
+    const row = sideScrollRef.value?.wrapRef?.querySelector(`[data-ekey="${CSS.escape(seg.key)}"]`)
+    row?.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'nearest' })
+  })
+  clearTimeout(flashTimer)
+  flashTimer = window.setTimeout(() => {
     if (flashKey.value === seg.key) flashKey.value = ''
-  }, 1600)
+  }, 1800)
 }
+
+/** 句子角标：由父级决定跳到三元组还是停在本页（当前直接高亮本句） */
+const emit = defineEmits(['locate'])
+function onSentenceClick(block) {
+  focusIndex.value = block.index
+  if (block.index >= 0) emit('locate', block.index)
+}
+
+/* 【创新点 1】外部（三元组行 / 统计页句子明细）要求定位证据句 */
+watch(
+  () => props.link,
+  (value) => {
+    if (!value || value.kind !== 'sentence') return
+    focusIndex.value = value.value
+    nextTick(() => {
+      scrollTo(`[data-idx="${value.value}"]`)
+    })
+    clearTimeout(focusTimer)
+    focusTimer = window.setTimeout(() => {
+      focusIndex.value = -1
+    }, 2600)
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => {
+  clearTimeout(flashTimer)
+  clearTimeout(focusTimer)
+})
 </script>
 
 <style scoped>
@@ -211,7 +376,7 @@ function onEntityClick(seg) {
   transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
-.legend-chip:hover {
+.legend-chip:hover:not(:disabled) {
   background: var(--surface-3);
   border-color: var(--line-strong);
 }
@@ -223,19 +388,29 @@ function onEntityClick(seg) {
   font-size: 11.5px;
 }
 
+/* 已隐藏：虚线框 + 空心点，与「本来就没有实体」区分开 */
 .legend-chip.is-off {
-  opacity: 0.4;
-  text-decoration: line-through;
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: var(--surface-3);
+  color: var(--muted);
 }
 
+.legend-chip.is-off b {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+/* 该类型没有实体：不可点，数字为 0 */
 .legend-chip.is-empty {
-  opacity: 0.45;
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .legend-tip {
   margin-left: auto;
   font-size: 11px;
-  color: var(--faint);
+  color: var(--muted);
 }
 
 .dot {
@@ -244,6 +419,12 @@ function onEntityClick(seg) {
   width: 6px;
   height: 6px;
   border-radius: 2px;
+  background: var(--c);
+}
+
+.dot.is-hollow {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--c);
 }
 
 /* ---------- 正文 + 侧栏 ---------- */
@@ -261,27 +442,50 @@ function onEntityClick(seg) {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--surface);
-  padding: 16px 18px;
+  padding: 6px 18px 16px;
 }
 
-.doc-text {
+/* 一句一段：句子级高亮与「N 条关系」角标都依附于它 */
+.sent {
+  position: relative;
   margin: 0;
+  padding: 7px 10px 7px 12px;
+  border-left: 2px solid transparent;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
   font-size: 14px;
-  line-height: 2.1;
+  line-height: 1.95;
   color: var(--ink-2);
   letter-spacing: 0.2px;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.sent:hover {
+  background: var(--surface-2);
+}
+
+.sent.is-focus {
+  background: #f4f7ff;
+  border-left-color: var(--accent);
 }
 
 .plain {
   white-space: pre-wrap;
 }
 
-/* 实体高亮：浅底色 + 下缘实色条，文字保持墨色，可读性优先 */
+/* 实体高亮：浅底色 + 下缘实色条，文字保持墨色，可读性优先。
+   用 button 是为了键盘可达；line-height 压到 1.5 让它的盒子高度
+   不超过段落行盒（1.95），否则内联块会把行距顶开 */
 .ent {
   position: relative;
+  display: inline;
   padding: 1px 2px;
   margin: 0 -1px;
+  border: none;
   border-radius: 3px;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.5;
+  text-align: inherit;
   color: var(--ink);
   background: var(--c-soft);
   box-shadow: inset 0 -2px 0 var(--c-line);
@@ -295,7 +499,7 @@ function onEntityClick(seg) {
   box-shadow: inset 0 -2px 0 var(--c);
 }
 
-/* hover 浮出类型标签，替代原先每个实体后面的小字 */
+/* hover / 键盘聚焦时浮出类型标签；读屏另有 aria-label */
 .ent::after {
   content: attr(data-type);
   position: absolute;
@@ -317,7 +521,8 @@ function onEntityClick(seg) {
   z-index: 10;
 }
 
-.ent:hover::after {
+.ent:hover::after,
+.ent:focus-visible::after {
   opacity: 1;
 }
 
@@ -330,6 +535,31 @@ function onEntityClick(seg) {
 .ent.is-flash {
   background: var(--c-hover);
   box-shadow: inset 0 -2px 0 var(--c), 0 0 0 3px var(--c-soft);
+}
+
+/* 句子角标：这一句抽出了几条关系 */
+.sent-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  height: 17px;
+  font-family: inherit;
+  font-size: 10.5px;
+  line-height: 17px;
+  color: var(--ink-2);
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  vertical-align: baseline;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.sent-badge:hover {
+  background: #eef2ff;
+  border-color: #c7d2f8;
+  color: #1d3fb8;
 }
 
 /* ---------- 实体清单 ---------- */
@@ -375,7 +605,7 @@ function onEntityClick(seg) {
   align-items: center;
   gap: 7px;
   min-height: 34px;
-  padding: 3px 6px;
+  padding: 4px 6px;
   border: none;
   background: transparent;
   border-radius: var(--r-xs);
@@ -406,9 +636,6 @@ function onEntityClick(seg) {
 }
 
 .entity-name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -418,17 +645,8 @@ function onEntityClick(seg) {
 .entity-meta {
   font-size: 10.5px;
   line-height: 1.3;
-  color: var(--faint);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
-}
-
-/* 合并标记：该实体在原文中有多种写法，已归一 */
-.merge-mark {
-  flex: none;
-  width: 5px;
-  height: 5px;
-  border-radius: 1px;
-  background: var(--line-strong);
 }
 
 @media (max-width: 900px) {

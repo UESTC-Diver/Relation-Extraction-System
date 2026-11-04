@@ -51,6 +51,10 @@ GENERIC_ORG = {
     "全资子公司", "上市公司", "国有企业", "国有控股", "民营企业", "外资企业",
     "互联网公司", "初创公司", "科技公司", "该子公司", "该集团", "该公司",
     "合作伙伴", "供应商", "竞争对手", "董事局", "董事会", "管理层", "高管层",
+    # 指代词组合：交给关系抽取层的指代消解处理，不作为实体
+    "该工厂", "该基地", "该园区", "该品牌", "该项目", "该平台", "该中心",
+    "本工厂", "本公司", "本集团", "此工厂", "此公司",
+    "生物医药企业", "高科技企业", "创新型企业", "初创企业",
 }
 
 EN_STOPWORDS = {
@@ -224,7 +228,7 @@ class EntityRecognizer:
     def _suffix_entities(self, tokens: list[Token]) -> list[Entity]:
         out: list[Entity] = []
         for i, tok in enumerate(tokens):
-            built = self._build_named(tokens, i, ORG_SUFFIX_WORDS, max_len=16)
+            built = self._build_named(tokens, i, ORG_SUFFIX_WORDS, max_len=16, forbid_loc_prefix=True)
             if built:
                 start, end, text = built
                 if (
@@ -245,7 +249,8 @@ class EntityRecognizer:
         return out
 
     def _build_named(
-        self, tokens: list[Token], i: int, suffixes: list[str], max_len: int
+        self, tokens: list[Token], i: int, suffixes: list[str], max_len: int,
+        forbid_loc_prefix: bool = False,
     ) -> tuple[int, int, str] | None:
         tok = tokens[i]
         word = tok.text
@@ -258,6 +263,9 @@ class EntityRecognizer:
         while j >= 0 and len(text) < max_len:
             prev = tokens[j]
             if prev.flag not in _NAME_FLAGS:
+                break
+            if forbid_loc_prefix and prev.text in _LOC_SET:
+                # 机构名不从地名上扩展（"德国" + "默克集团" ≠ "德国默克集团"）
                 break
             if tokens[j + 1].start != prev.end:
                 break
@@ -318,7 +326,7 @@ class EntityRecognizer:
                     out.append(Entity(t.start, t.end, piece, "LOC",
                                       _TYPE_SCORE["pos"] - 4, "pos"))
             elif t.flag == "nt":
-                if 2 <= len(piece) <= 16 and piece not in GENERIC_ORG:
+                if 2 <= len(piece) <= 16 and piece not in GENERIC_ORG and not piece.endswith("企业"):
                     out.append(Entity(t.start, t.end, piece, "ORG",
                                       _TYPE_SCORE["pos"] - 2, "pos"))
             elif t.flag == "nz" and piece in _PRODUCT_SET:
