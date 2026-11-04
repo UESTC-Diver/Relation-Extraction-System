@@ -10,14 +10,16 @@ relations  : 该任务抽出的三元组，行式存储便于统计查询
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-DB_PATH = DATA_DIR / "app.db"
+# 默认落在 backend/data/app.db；测试或部署时可用 APP_DB_PATH 指向别处
+DB_PATH = Path(os.environ.get("APP_DB_PATH") or Path(__file__).resolve().parent.parent / "data" / "app.db")
+DATA_DIR = DB_PATH.parent
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS records (
