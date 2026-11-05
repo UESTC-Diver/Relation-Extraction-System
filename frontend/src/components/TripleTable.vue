@@ -62,7 +62,19 @@
       </div>
 
       <div class="tb-right">
+        <span v-if="dirty" class="dirty-flag">未保存</span>
         <span class="count"><b>{{ filtered.length }}</b> / {{ relations.length }} 条</span>
+        <el-button :icon="Plus" @click="openAdd">新增</el-button>
+        <el-button
+          type="primary"
+          :icon="Check"
+          :loading="saving"
+          :disabled="!dirty || !recordId"
+          :title="recordId ? '保存校正到历史记录' : '请先存入历史'"
+          @click="emit('save')"
+        >
+          保存校正
+        </el-button>
         <el-button :icon="Download" @click="exportCsv">导出 CSV</el-button>
       </div>
     </div>
@@ -107,9 +119,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="关系" width="106" align="center">
+        <el-table-column label="关系" width="132" align="center">
           <template #default="{ row }">
             <span class="rel-pill" :style="pillStyle(row.relation)">{{ row.relation_label }}</span>
+            <span v-if="row.rule_base === 'manual'" class="manual-tag">人工</span>
           </template>
         </el-table-column>
 
@@ -142,36 +155,114 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="72" align="center">
+        <el-table-column label="操作" width="150" align="center">
           <template #default="{ row }">
-            <button
-              class="locate-btn"
-              type="button"
-              :aria-label="`定位第 ${(row.sentence_index ?? 0) + 1} 句证据句`"
-              :title="`第 ${(row.sentence_index ?? 0) + 1} 句 · 跳到原文`"
-              @click="emit('locate', row.sentence_index)"
-            >
-              原文
-            </button>
+            <div class="row-actions">
+              <button
+                class="locate-btn"
+                type="button"
+                :aria-label="`定位第 ${(row.sentence_index ?? 0) + 1} 句证据句`"
+                :title="`第 ${(row.sentence_index ?? 0) + 1} 句 · 跳到原文`"
+                @click="emit('locate', row.sentence_index)"
+              >
+                原文
+              </button>
+              <el-button link size="small" @click="openEdit(row)">编辑</el-button>
+              <el-popconfirm
+                title="删除这条三元组？"
+                confirm-button-text="删除"
+                cancel-button-text="取消"
+                @confirm="remove(row)"
+              >
+                <template #reference>
+                  <el-button link size="small" class="r-del">删除</el-button>
+                </template>
+              </el-popconfirm>
+            </div>
           </template>
         </el-table-column>
       </el-table>
     </div>
+
+    <el-dialog
+      v-model="dialogOpen"
+      :title="editingIndex !== null ? '编辑三元组' : '新增三元组'"
+      width="580px"
+      append-to-body
+      class="triple-dialog"
+    >
+      <el-form label-width="86px" class="triple-form" @submit.prevent>
+        <div class="form-grid">
+          <el-form-item label="头实体">
+            <el-input v-model="form.head" maxlength="64" placeholder="实体名称" />
+          </el-form-item>
+          <el-form-item label="头实体类型">
+            <el-select v-model="form.head_type">
+              <el-option v-for="t in typeOptions" :key="t.key" :label="t.label" :value="t.key" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="关系">
+            <el-select v-model="form.relation">
+              <el-option v-for="r in schema.relation_types || []" :key="r.key" :label="r.label" :value="r.key" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="尾实体">
+            <el-input v-model="form.tail" maxlength="64" placeholder="实体名称" />
+          </el-form-item>
+          <el-form-item label="尾实体类型">
+            <el-select v-model="form.tail_type">
+              <el-option v-for="t in typeOptions" :key="t.key" :label="t.label" :value="t.key" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="证据句">
+            <el-select
+              v-model="form.sentence_index"
+              clearable
+              placeholder="选择原文句子（可选）"
+              @change="onSentencePick"
+            >
+              <el-option
+                v-for="s in sortedSentences"
+                :key="s.index"
+                :label="`第 ${s.index + 1} 句 · ${shortText(s.text)}`"
+                :value="s.index"
+              />
+            </el-select>
+          </el-form-item>
+        </div>
+        <el-form-item label="证据文本">
+          <el-input
+            v-model="form.evidence"
+            type="textarea"
+            :rows="2"
+            placeholder="选择句子后可自动带入，也可手工填写"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dialogOpen = false">取消</el-button>
+        <el-button type="primary" @click="confirm">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Close, Download, Search } from '@element-plus/icons-vue'
+import { Check, Close, Download, Plus, Search } from '@element-plus/icons-vue'
 
 const props = defineProps({
   relations: { type: Array, default: () => [] },
   schema: { type: Object, default: () => ({}) },
   entityFilter: { type: Object, default: null },
+  sentences: { type: Array, default: () => [] },
+  recordId: { type: Number, default: null },
+  dirty: { type: Boolean, default: false },
+  saving: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['locate', 'clear-filter'])
+const emit = defineEmits(['locate', 'clear-filter', 'update:relations', 'save'])
 
 const picked = ref([])
 const keyword = ref('')
@@ -208,11 +299,135 @@ const relationOptions = computed(() => {
     .sort((a, b) => b.count - a.count)
 })
 
+const typeOptions = computed(() => props.schema.entity_types || [])
+const sortedSentences = computed(() => [...props.sentences].sort((a, b) => a.index - b.index))
+
+function emptyForm() {
+  return {
+    head: '',
+    head_type: 'ORG',
+    relation: props.schema.relation_types?.[0]?.key || 'acquire',
+    tail: '',
+    tail_type: 'ORG',
+    sentence_index: null,
+    evidence: '',
+  }
+}
+
+const dialogOpen = ref(false)
+const editingIndex = ref(null)
+const form = ref(emptyForm())
+
+const ORG_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '集团公司', '集团', '控股', '公司']
+
+/** 与后端 canonical_name 保持一致，保存前导出的 CSV 也使用规范化名。 */
+function canonicalize(text, type) {
+  if (type !== 'ORG') return text
+  let result = text
+  for (;;) {
+    const suffix = ORG_SUFFIXES.find((s) => result.endsWith(s) && result.length - s.length >= 2)
+    if (!suffix) return result
+    result = result.slice(0, -suffix.length)
+  }
+}
+
+function shortText(text) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim()
+  return value.length > 30 ? `${value.slice(0, 30)}…` : value
+}
+
+function onSentencePick(index) {
+  if (index == null) return
+  const sentence = props.sentences.find((s) => s.index === index)
+  if (sentence) form.value.evidence = sentence.text
+}
+
+function openAdd() {
+  editingIndex.value = null
+  form.value = emptyForm()
+  dialogOpen.value = true
+}
+
+function openEdit(row) {
+  editingIndex.value = row._idx
+  form.value = {
+    head: row.head,
+    head_type: row.head_type,
+    relation: row.relation,
+    tail: row.tail,
+    tail_type: row.tail_type,
+    sentence_index: row.sentence_index ?? null,
+    evidence: row.evidence || '',
+  }
+  dialogOpen.value = true
+}
+
+function confirm() {
+  const head = form.value.head.trim()
+  const tail = form.value.tail.trim()
+  if (!head || !tail) {
+    ElMessage.warning('头实体和尾实体不能为空')
+    return
+  }
+  if (!form.value.relation) {
+    ElMessage.warning('请选择关系类型')
+    return
+  }
+  const relation = relMap.value[form.value.relation]
+  const original = editingIndex.value !== null ? props.relations[editingIndex.value] : null
+  const headCanonical =
+    original && original.head === head && original.head_type === form.value.head_type
+      ? original.head_canonical || head
+      : canonicalize(head, form.value.head_type)
+  const tailCanonical =
+    original && original.tail === tail && original.tail_type === form.value.tail_type
+      ? original.tail_canonical || tail
+      : canonicalize(tail, form.value.tail_type)
+  const sentenceIndex =
+    typeof form.value.sentence_index === 'number' ? form.value.sentence_index : 0
+
+  const row = {
+    id: original?.id || `manual-${Date.now()}`,
+    head,
+    head_canonical: headCanonical,
+    head_type: form.value.head_type,
+    relation: form.value.relation,
+    relation_label: relation?.label || form.value.relation,
+    relation_color: relation?.color || '',
+    tail,
+    tail_canonical: tailCanonical,
+    tail_type: form.value.tail_type,
+    confidence: 1,
+    evidence: form.value.evidence.trim(),
+    trigger: '人工校正',
+    sentence_index: sentenceIndex,
+    rule_base: 'manual',
+  }
+
+  const next =
+    editingIndex.value !== null
+      ? props.relations.map((r, i) =>
+          i === editingIndex.value ? { ...r, ...row, id: r.id || row.id } : r,
+        )
+      : [row, ...props.relations]
+  emit('update:relations', next)
+  dialogOpen.value = false
+  ElMessage.success(editingIndex.value !== null ? '已修改，记得保存校正' : '已新增，记得保存校正')
+}
+
+function remove(row) {
+  emit(
+    'update:relations',
+    props.relations.filter((_, i) => i !== row._idx),
+  )
+  ElMessage.success('已删除，记得保存校正')
+}
+
 const filtered = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   const ef = props.entityFilter
   return props.relations
-    .map((r, i) => ({ ...r, _rid: i }))
+    .map((r, i) => ({ ...r, _rid: r.id || `row-${i}`, _idx: i }))
     .filter((r) => {
       if (picked.value.length && !picked.value.includes(r.relation)) return false
       if (r.confidence < minConf.value) return false
@@ -263,6 +478,7 @@ const RULE_LABEL = {
   attributive: '职位线索',
   coref: '指代消解',
   chain: '主语链',
+  manual: '人工校正',
 }
 
 function ruleLabel(base) {
@@ -394,7 +610,18 @@ function exportCsv() {
 .tb-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dirty-flag {
+  font-size: 10.5px;
+  color: #b45309;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: var(--r-xs);
+  padding: 1px 6px;
 }
 
 .count {
@@ -526,6 +753,34 @@ function exportCsv() {
   white-space: nowrap;
 }
 
+.manual-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  font-size: 10px;
+  color: #7c3aed;
+  background: #7c3aed12;
+  border: 1px solid #7c3aed33;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.row-actions :deep(.el-button) {
+  height: 22px;
+  padding: 0 3px;
+  font-size: 11.5px;
+}
+
+.row-actions :deep(.r-del:hover) {
+  color: var(--danger);
+}
+
 .conf-cell {
   display: flex;
   align-items: center;
@@ -619,5 +874,44 @@ function exportCsv() {
   font-weight: 500;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 新增 / 编辑弹窗 ---------- */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+
+.triple-form :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.triple-form :deep(.el-form-item__label) {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.triple-form :deep(.el-input__wrapper),
+.triple-form :deep(.el-select__wrapper) {
+  min-height: 30px;
+  height: 30px;
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
+}
+
+.triple-form :deep(.el-select) {
+  width: 100%;
+}
+
+.triple-form :deep(.el-textarea__inner) {
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
+}
+
+@media (max-width: 860px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

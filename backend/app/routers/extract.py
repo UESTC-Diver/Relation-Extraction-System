@@ -46,7 +46,7 @@ def _run(text: str, title: str | None, save: bool, source: str) -> ExtractRespon
         raise HTTPException(status_code=400, detail="文本内容为空")
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=413, detail=f"文本过长（{len(text)} 字），请控制在 {MAX_CHARS} 字以内")
-    result = analyze(text)
+    result = analyze(text, custom_terms=db.list_custom_terms())
     result["source"] = source
     record_id = db.save_record(result, source=source, title=title or "") if save else None
     if record_id:

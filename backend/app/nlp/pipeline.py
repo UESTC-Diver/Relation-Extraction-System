@@ -24,8 +24,11 @@ def _engines() -> tuple[EntityRecognizer, RelationExtractor]:
     return _recognizer, _extractor
 
 
-def analyze(text: str) -> dict:
-    """对一段中文文本执行实体识别与关系抽取，返回可直接序列化的结果。"""
+def analyze(text: str, custom_terms: list[dict] | None = None) -> dict:
+    """对一段中文文本执行实体识别与关系抽取，返回可直接序列化的结果。
+
+    custom_terms 来自用户自定义词典，形式为 [{"text": ..., "type": ...}]。
+    """
     started = time.perf_counter()
     text = (text or "").strip()
     if not text:
@@ -33,7 +36,7 @@ def analyze(text: str) -> dict:
 
     recognizer, extractor = _engines()
     sentences = split_sentences(text)
-    entities = recognizer.recognize(text, sentences)
+    entities = recognizer.recognize(text, sentences, custom_terms=custom_terms)
     for i, e in enumerate(entities, start=1):
         e.id = f"e{i}"
 

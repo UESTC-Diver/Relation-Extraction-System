@@ -18,6 +18,7 @@ from dataclasses import dataclass
 
 from .lexicon import (
     COMPOUND_SURNAMES,
+    ENTITY_TYPES,
     LOC_GAZETTEER,
     ORG_GAZETTEER,
     PERSON_GAZETTEER,
@@ -28,6 +29,8 @@ from .lexicon import (
 from .tokenizer import Sentence, Token, tokenize
 
 _TYPE_SCORE = {
+    # 用户显式指定的类型优先于内置词典（同跨度时覆盖）
+    "custom": 105,
     "gazetteer": 100,
     "suffix": 76,
     "context": 72,
@@ -202,9 +205,15 @@ def _dict_type(word: str) -> str:
 class EntityRecognizer:
     """中文实体识别器（无外部模型依赖，纯词典 + 规则）。"""
 
-    def recognize(self, text: str, sentences: list[Sentence]) -> list[Entity]:
+    def recognize(
+        self,
+        text: str,
+        sentences: list[Sentence],
+        custom_terms: list[dict] | None = None,
+    ) -> list[Entity]:
         tokens = tokenize(text)
         candidates: list[Entity] = []
+        candidates.extend(self._custom_entities(text, custom_terms or []))
         candidates.extend(self._dict_entities(text))
         candidates.extend(self._suffix_entities(tokens))
         candidates.extend(self._context_entities(text))
@@ -219,6 +228,29 @@ class EntityRecognizer:
     # ------------------------------------------------------------------ #
     # 各路子识别
     # ------------------------------------------------------------------ #
+    def _custom_entities(self, text: str, terms: list[dict]) -> list[Entity]:
+        """用户自定义词条：最高优先级参与融合，用于补领域实体。"""
+        out: list[Entity] = []
+        for term in terms:
+            word = str(term.get("text") or "").strip()
+            etype = str(term.get("type") or "")
+            if len(word) < 2 or etype not in ENTITY_TYPES:
+                continue
+            start = text.find(word)
+            while start >= 0:
+                out.append(
+                    Entity(
+                        start,
+                        start + len(word),
+                        word,
+                        etype,
+                        _TYPE_SCORE["custom"],
+                        "custom",
+                    )
+                )
+                start = text.find(word, start + 1)
+        return out
+
     def _dict_entities(self, text: str) -> list[Entity]:
         out: list[Entity] = []
         for m in _DICT_RE.finditer(text):
