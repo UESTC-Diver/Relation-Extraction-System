@@ -1,0 +1,2891 @@
+{
+ "url": "http://127.0.0.1:8016/",
+ "at": "2026-11-07T12:10:33.002Z",
+ "allow": [],
+ "viewports": [
+  {
+   "width": 1440,
+   "height": 900,
+   "load": "load",
+   "screens": 8,
+   "filled": [
+    0.47,
+    0.95,
+    0.68,
+    0.71,
+    0.95,
+    0.85,
+    0.68,
+    0.89
+   ],
+   "motion": {
+    "elements": 57,
+    "css": 49,
+    "transitions": 8,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "page": {
+     "height": 6988,
+     "screens": 7.8,
+     "words": 263,
+     "img": 4,
+     "video": 0,
+     "canvas": 0,
+     "svg": 5,
+     "sections": 8,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 4,
+     "uiAbuse": false,
+     "realPictures": 4,
+     "videoCount": 0,
+     "uiPictures": 4,
+     "pictureSamples": [
+      "view-entities.png",
+      "view-triples.png",
+      "view-graph.png",
+      "view-stats.png"
+     ],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "从一段中文新闻， 抽出带出处的三元组。",
+     "words": 2,
+     "chars": 19,
+     "lines": 2,
+     "size": 56,
+     "vw": 3.9,
+     "font": "Space Grotesk",
+     "weight": 500,
+     "tracking": 0,
+     "leading": 1.16,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.78,
+     "top": 112,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "从一段中文新闻， 抽出带出处的三元组。",
+     "words": 2,
+     "lines": 2,
+     "size": 56,
+     "font": "Space Grotesk"
+    },
+    "headings": [
+     {
+      "text": "从一段中文新闻， 抽出带出处的三元组。",
+      "words": 2,
+      "chars": 19,
+      "lines": 2,
+      "size": 56,
+      "vw": 3.9,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.16,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.78,
+      "top": 112,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "运行",
+      "words": 1,
+      "chars": 2,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.61,
+      "top": 1028,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "能力",
+      "words": 1,
+      "chars": 2,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 1526,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "实体标注",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.09,
+      "top": 1674,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "实体标注",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.09,
+      "top": 1710,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "关系三元组",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.11,
+      "top": 1774,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "证据链穿透",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.11,
+      "top": 1838,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "关系图谱",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.09,
+      "top": 1902,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "统计洞察",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.09,
+      "top": 1966,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "编码识别",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.09,
+      "top": 2030,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "结果导出",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.09,
+      "top": 2094,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "历史复现",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.09,
+      "top": 2158,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "真实输出样例",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 2402,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "处理流程",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 3494,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "工作台的四个视图",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 4221,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "常见问题",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 5834,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "进入工作台",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 1,
+      "top": 6528,
+      "tag": "a",
+      "kind": "heading"
+     },
+     {
+      "text": "中文关系抽取系统",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 32,
+      "vw": 2.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.89,
+      "top": 6864,
+      "tag": "p",
+      "kind": "statement"
+     }
+    ],
+    "headingSummary": {
+     "count": 18,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 1,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Space Grotesk",
+       "share": 0.96,
+       "mono": false
+      },
+      {
+       "family": "monospace",
+       "share": 0.04,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      14,
+      16,
+      20,
+      32,
+      56
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": null,
+     "measureChars": null,
+     "max": {
+      "size": 56,
+      "vw": 3.9,
+      "font": "Space Grotesk",
+      "text": "从一段中文新闻，"
+     },
+     "monoShare": 0.04,
+     "monoProseShare": 0,
+     "monoFamilies": [
+      "monospace"
+     ],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.04,
+     "centerShare": 0.01,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f5f2ea",
+     "bodyBgHsl": {
+      "h": 44,
+      "s": 0.35,
+      "l": 0.94
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#f5f2ea",
+       "top": 0,
+       "hsl": {
+        "h": 44,
+        "s": 0.35,
+        "l": 0.94
+       }
+      },
+      {
+       "color": "#fffdf7",
+       "top": 426,
+       "hsl": {
+        "h": 45,
+        "s": 1,
+        "l": 0.98
+       }
+      },
+      {
+       "color": "#1b1a17",
+       "top": 932,
+       "hsl": {
+        "h": 45,
+        "s": 0.08,
+        "l": 0.1
+       }
+      },
+      {
+       "color": "#ece7db",
+       "top": 1430,
+       "hsl": {
+        "h": 42,
+        "s": 0.31,
+        "l": 0.89
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#1a1a18",
+       "share": 0.32
+      },
+      {
+       "color": "#3f3d37",
+       "share": 0.28
+      },
+      {
+       "color": "#615e55",
+       "share": 0.17
+      },
+      {
+       "color": "#f5f2ea",
+       "share": 0.17
+      },
+      {
+       "color": "#b3261e",
+       "share": 0.05
+      }
+     ],
+     "button": {
+      "bg": "#1a1a18",
+      "hsl": {
+       "h": 60,
+       "s": 0.04,
+       "l": 0.1
+      },
+      "fg": "#1b1a17"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 8,
+     "inHero": 5,
+     "radius": 4,
+     "height": 38,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "跳到主要内容",
+      "进入工作台 →",
+      "进入工作台",
+      "调用接口重跑",
+      "1 9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司全部流通股，交易总金额"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 4,
+     "mediaRadius": 4,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 4,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 4309
+      }
+     ]
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 7,
+     "fixed": true,
+     "height": 64,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "space grotesk"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 1440,
+     "h": 900
+    },
+    "pageH": 6988,
+    "margins": {
+     "left": 80,
+     "right": 80
+    },
+    "sections": [
+     {
+      "sel": "section.lp-hero",
+      "tag": "section",
+      "top": 64,
+      "height": 868,
+      "words": 79,
+      "media": 0,
+      "middle": 27,
+      "heading": {
+       "text": "从一段中文新闻，",
+       "size": 56,
+       "tag": "h1"
+      },
+      "left": 80,
+      "right": 106,
+      "textLeft": 80,
+      "textRight": 106,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#run.lp-section.lp-runsec",
+      "tag": "section",
+      "top": 932,
+      "height": 498,
+      "words": 18,
+      "media": 0,
+      "middle": 432,
+      "heading": {
+       "text": "运行",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 280,
+      "right": 280,
+      "textLeft": 280,
+      "textRight": 296,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#capabilities.lp-section.lp-capabilities",
+      "tag": "section",
+      "top": 1430,
+      "height": 876,
+      "words": 29,
+      "media": 0,
+      "middle": 80,
+      "heading": {
+       "text": "能力",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 80,
+      "right": 112,
+      "textLeft": 80,
+      "textRight": 112,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section.lp-section.lp-board-sec",
+      "tag": "section",
+      "top": 2306,
+      "height": 1092,
+      "words": 70,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "真实输出样例",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 80,
+      "right": 80,
+      "textLeft": 80,
+      "textRight": 140,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#method.lp-section.lp-method",
+      "tag": "section",
+      "top": 3398,
+      "height": 727,
+      "words": 10,
+      "media": 1,
+      "middle": 0,
+      "heading": {
+       "text": "处理流程",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 80,
+      "right": 91,
+      "textLeft": 80,
+      "textRight": 91,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section.lp-section.lp-views",
+      "tag": "section",
+      "top": 4125,
+      "height": 1099,
+      "words": 7,
+      "media": 2,
+      "middle": 0,
+      "heading": {
+       "text": "工作台的四个视图",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 0,
+      "right": 0,
+      "textLeft": 80,
+      "textRight": 440,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#scope.lp-section.lp-scope",
+      "tag": "section",
+      "top": 5224,
+      "height": 514,
+      "words": 18,
+      "media": 0,
+      "middle": 42,
+      "heading": {
+       "text": "适用范围与已知限制",
+       "size": 20,
+       "tag": "h2"
+      },
+      "left": 385,
+      "right": 400,
+      "textLeft": 385,
+      "textRight": 400,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#faq.lp-section.lp-faq",
+      "tag": "section",
+      "top": 5738,
+      "height": 790,
+      "words": 16,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "常见问题",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 80,
+      "right": 104,
+      "textLeft": 80,
+      "textRight": 808,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "a.lp-final",
+      "tag": "a",
+      "top": 6528,
+      "height": 220,
+      "words": 1,
+      "media": 0,
+      "middle": 1056,
+      "heading": {
+       "text": "进入工作台",
+       "size": 32,
+       "tag": "span"
+      },
+      "left": 80,
+      "right": 80,
+      "textLeft": 80,
+      "textRight": 1200,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "footer.lp-footer",
+      "tag": "footer",
+      "top": 6748,
+      "height": 240,
+      "words": 21,
+      "media": 0,
+      "middle": 372,
+      "heading": {
+       "text": "中文关系抽取系统",
+       "size": 32,
+       "tag": "p"
+      },
+      "left": 80,
+      "right": 80,
+      "textLeft": 80,
+      "textRight": 80,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "从一段中文新闻， 抽出带出处的三元组。",
+      "size": 56,
+      "top": 112,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 80,
+      "n": 8
+     },
+     {
+      "x": 280,
+      "n": 1
+     },
+     {
+      "x": 385,
+      "n": 1
+     },
+     {
+      "x": 523,
+      "n": 1
+     },
+     {
+      "x": 965,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 12,
+    "bodySize": 16,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0.11,
+    "voidBox": {
+     "x": 660,
+     "y": 120,
+     "w": 780,
+     "h": 180
+    }
+   },
+   "app": null,
+   "consoleErrors": []
+  },
+  {
+   "width": 768,
+   "height": 1024,
+   "load": "load",
+   "screens": 7,
+   "filled": [
+    0.57,
+    0.79,
+    0.78,
+    0.82,
+    0.98,
+    0.76,
+    0.89
+   ],
+   "motion": {
+    "elements": 57,
+    "css": 49,
+    "transitions": 8,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "page": {
+     "height": 6972,
+     "screens": 6.8,
+     "words": 236,
+     "img": 4,
+     "video": 0,
+     "canvas": 0,
+     "svg": 5,
+     "sections": 8,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 4,
+     "uiAbuse": false,
+     "realPictures": 4,
+     "videoCount": 0,
+     "uiPictures": 4,
+     "pictureSamples": [
+      "view-entities.png",
+      "view-triples.png",
+      "view-graph.png",
+      "view-stats.png"
+     ],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "从一段中文新闻， 抽出带出处的三元组。",
+     "words": 2,
+     "chars": 19,
+     "lines": 2,
+     "size": 40,
+     "vw": 5.2,
+     "font": "Space Grotesk",
+     "weight": 500,
+     "tracking": 0,
+     "leading": 1.16,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.94,
+     "top": 112,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "从一段中文新闻， 抽出带出处的三元组。",
+     "words": 2,
+     "lines": 2,
+     "size": 40,
+     "font": "Space Grotesk"
+    },
+    "headings": [
+     {
+      "text": "从一段中文新闻， 抽出带出处的三元组。",
+      "words": 2,
+      "chars": 19,
+      "lines": 2,
+      "size": 40,
+      "vw": 5.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.16,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 112,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "运行",
+      "words": 1,
+      "chars": 2,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 1376,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "能力",
+      "words": 1,
+      "chars": 2,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 1874,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "实体标注",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "right",
+      "widthRatio": 0.17,
+      "top": 1997,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "实体标注",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 2058,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "关系三元组",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.21,
+      "top": 2122,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "证据链穿透",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.21,
+      "top": 2186,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "关系图谱",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 2250,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "统计洞察",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 2314,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "编码识别",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 2378,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "结果导出",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 2442,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "历史复现",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.17,
+      "top": 2506,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "真实输出样例",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 2750,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "处理流程",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 3842,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "工作台的四个视图",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 4500,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "常见问题",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 5818,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "进入工作台",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 1,
+      "top": 6512,
+      "tag": "a",
+      "kind": "heading"
+     },
+     {
+      "text": "中文关系抽取系统",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 32,
+      "vw": 4.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.94,
+      "top": 6848,
+      "tag": "p",
+      "kind": "statement"
+     }
+    ],
+    "headingSummary": {
+     "count": 18,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 1,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Space Grotesk",
+       "share": 0.95,
+       "mono": false
+      },
+      {
+       "family": "monospace",
+       "share": 0.05,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      14,
+      16,
+      20,
+      32,
+      40
+     ],
+     "sizeCount": 5,
+     "notLoaded": [],
+     "body": null,
+     "measureChars": null,
+     "max": {
+      "size": 40,
+      "vw": 5.2,
+      "font": "Space Grotesk",
+      "text": "从一段中文新闻，"
+     },
+     "monoShare": 0.05,
+     "monoProseShare": 0,
+     "monoFamilies": [
+      "monospace"
+     ],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.04,
+     "centerShare": 0.01,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f5f2ea",
+     "bodyBgHsl": {
+      "h": 44,
+      "s": 0.35,
+      "l": 0.94
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#f5f2ea",
+       "top": 0,
+       "hsl": {
+        "h": 44,
+        "s": 0.35,
+        "l": 0.94
+       }
+      },
+      {
+       "color": "#fffdf7",
+       "top": 386,
+       "hsl": {
+        "h": 45,
+        "s": 1,
+        "l": 0.98
+       }
+      },
+      {
+       "color": "#1b1a17",
+       "top": 1280,
+       "hsl": {
+        "h": 45,
+        "s": 0.08,
+        "l": 0.1
+       }
+      },
+      {
+       "color": "#ece7db",
+       "top": 1778,
+       "hsl": {
+        "h": 42,
+        "s": 0.31,
+        "l": 0.89
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#1a1a18",
+       "share": 0.33
+      },
+      {
+       "color": "#3f3d37",
+       "share": 0.29
+      },
+      {
+       "color": "#f5f2ea",
+       "share": 0.17
+      },
+      {
+       "color": "#615e55",
+       "share": 0.15
+      },
+      {
+       "color": "#b3261e",
+       "share": 0.06
+      }
+     ],
+     "button": {
+      "bg": "#1a1a18",
+      "hsl": {
+       "h": 60,
+       "s": 0.04,
+       "l": 0.1
+      },
+      "fg": "#1b1a17"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 8,
+     "inHero": 5,
+     "radius": 4,
+     "height": 38,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "跳到主要内容",
+      "进入工作台 →",
+      "进入工作台",
+      "调用接口重跑",
+      "1 9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司全部流通股，交易总金额"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 4,
+     "mediaRadius": 4,
+     "textShadow": 0,
+     "cardRows": [
+      {
+       "count": 4,
+       "iconTopped": false,
+       "rounded": false,
+       "top": 4588
+      }
+     ]
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 7,
+     "fixed": true,
+     "height": 64,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "space grotesk"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 768,
+     "h": 1024
+    },
+    "pageH": 6972,
+    "margins": {
+     "left": 24,
+     "right": 24
+    },
+    "sections": [
+     {
+      "sel": "section.lp-hero",
+      "tag": "section",
+      "top": 64,
+      "height": 1216,
+      "words": 79,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "从一段中文新闻，",
+       "size": 40,
+       "tag": "h1"
+      },
+      "left": 24,
+      "right": 53,
+      "textLeft": 24,
+      "textRight": 53,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#run.lp-section.lp-runsec",
+      "tag": "section",
+      "top": 1280,
+      "height": 498,
+      "words": 18,
+      "media": 0,
+      "middle": 272,
+      "heading": {
+       "text": "运行",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 24,
+      "right": 24,
+      "textLeft": 24,
+      "textRight": 40,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#capabilities.lp-section.lp-capabilities",
+      "tag": "section",
+      "top": 1778,
+      "height": 876,
+      "words": 29,
+      "media": 0,
+      "middle": 64,
+      "heading": {
+       "text": "能力",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 24,
+      "right": 56,
+      "textLeft": 24,
+      "textRight": 56,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section.lp-section.lp-board-sec",
+      "tag": "section",
+      "top": 2654,
+      "height": 1092,
+      "words": 43,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "真实输出样例",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 24,
+      "right": 24,
+      "textLeft": 24,
+      "textRight": 66,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#method.lp-section.lp-method",
+      "tag": "section",
+      "top": 3746,
+      "height": 658,
+      "words": 10,
+      "media": 1,
+      "middle": 0,
+      "heading": {
+       "text": "处理流程",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 24,
+      "right": 24,
+      "textLeft": 24,
+      "textRight": 24,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section.lp-section.lp-views",
+      "tag": "section",
+      "top": 4404,
+      "height": 804,
+      "words": 7,
+      "media": 3,
+      "middle": 0,
+      "heading": {
+       "text": "工作台的四个视图",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 0,
+      "right": 0,
+      "textLeft": 24,
+      "textRight": 104,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#scope.lp-section.lp-scope",
+      "tag": "section",
+      "top": 5208,
+      "height": 514,
+      "words": 18,
+      "media": 0,
+      "middle": 38,
+      "heading": {
+       "text": "适用范围与已知限制",
+       "size": 20,
+       "tag": "h2"
+      },
+      "left": 69,
+      "right": 74,
+      "textLeft": 69,
+      "textRight": 74,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#faq.lp-section.lp-faq",
+      "tag": "section",
+      "top": 5722,
+      "height": 790,
+      "words": 16,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "常见问题",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 24,
+      "right": 48,
+      "textLeft": 24,
+      "textRight": 192,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "a.lp-final",
+      "tag": "a",
+      "top": 6512,
+      "height": 220,
+      "words": 1,
+      "media": 0,
+      "middle": 496,
+      "heading": {
+       "text": "进入工作台",
+       "size": 32,
+       "tag": "span"
+      },
+      "left": 24,
+      "right": 24,
+      "textLeft": 24,
+      "textRight": 584,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "footer.lp-footer",
+      "tag": "footer",
+      "top": 6732,
+      "height": 240,
+      "words": 21,
+      "media": 0,
+      "middle": 92,
+      "heading": {
+       "text": "中文关系抽取系统",
+       "size": 32,
+       "tag": "p"
+      },
+      "left": 24,
+      "right": 24,
+      "textLeft": 24,
+      "textRight": 24,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "从一段中文新闻， 抽出带出处的三元组。",
+      "size": 40,
+      "top": 112,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 24,
+      "n": 9
+     },
+     {
+      "x": 69,
+      "n": 1
+     },
+     {
+      "x": 272,
+      "n": 1
+     },
+     {
+      "x": 520,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 12,
+    "bodySize": 16,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": null,
+   "consoleErrors": []
+  },
+  {
+   "width": 390,
+   "height": 844,
+   "load": "load",
+   "screens": 10,
+   "filled": [
+    0.63,
+    0.61,
+    0.95,
+    0.71,
+    0.84,
+    0.96,
+    0.96,
+    0.79,
+    0.71,
+    0.9
+   ],
+   "motion": {
+    "elements": 57,
+    "css": 49,
+    "transitions": 8,
+    "scripted": 0,
+    "videos": 0,
+    "playingVideos": 0
+   },
+   "metrics": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "page": {
+     "height": 8111,
+     "screens": 9.6,
+     "words": 204,
+     "img": 4,
+     "video": 0,
+     "canvas": 0,
+     "svg": 5,
+     "sections": 8,
+     "horizontalOverflow": 0,
+     "overflowCulprits": [],
+     "uiFragments": 4,
+     "uiAbuse": false,
+     "realPictures": 4,
+     "videoCount": 0,
+     "uiPictures": 4,
+     "pictureSamples": [
+      "view-entities.png",
+      "view-triples.png",
+      "view-graph.png",
+      "view-stats.png"
+     ],
+     "blendText": 0,
+     "sideScrollers": 0,
+     "brokenImages": [],
+     "emoji": [],
+     "videosNoPoster": 0
+    },
+    "hero": {
+     "text": "抽出三元组， 附上原文出处。",
+     "words": 2,
+     "chars": 14,
+     "lines": 2,
+     "size": 32,
+     "vw": 8.2,
+     "font": "Space Grotesk",
+     "weight": 500,
+     "tracking": 0,
+     "leading": 1.16,
+     "upper": false,
+     "italic": false,
+     "mono": false,
+     "align": "left",
+     "position": "center",
+     "widthRatio": 0.92,
+     "top": 88,
+     "tag": "h1",
+     "kind": "heading"
+    },
+    "h1": {
+     "text": "抽出三元组， 附上原文出处。",
+     "words": 2,
+     "lines": 2,
+     "size": 32,
+     "font": "Space Grotesk"
+    },
+    "headings": [
+     {
+      "text": "抽出三元组， 附上原文出处。",
+      "words": 2,
+      "chars": 14,
+      "lines": 2,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.16,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 88,
+      "tag": "h1",
+      "kind": "heading"
+     },
+     {
+      "text": "运行",
+      "words": 1,
+      "chars": 2,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 1538,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "能力",
+      "words": 1,
+      "chars": 2,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 2068,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "实体标注",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.25,
+      "top": 2252,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "关系三元组",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.31,
+      "top": 2306,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "证据链穿透",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.31,
+      "top": 2360,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "关系图谱",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.25,
+      "top": 2414,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "统计洞察",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.25,
+      "top": 2468,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "编码识别",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.25,
+      "top": 2522,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "结果导出",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.25,
+      "top": 2576,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "历史复现",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 24,
+      "vw": 6.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.25,
+      "top": 2630,
+      "tag": "span",
+      "kind": "heading"
+     },
+     {
+      "text": "实体标注",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "left",
+      "widthRatio": 0.33,
+      "top": 2720,
+      "tag": "h3",
+      "kind": "heading"
+     },
+     {
+      "text": "真实输出样例",
+      "words": 1,
+      "chars": 6,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 3097,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "处理流程",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 4125,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "工作台的四个视图",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 4814,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "常见问题",
+      "words": 1,
+      "chars": 4,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 6831,
+      "tag": "h2",
+      "kind": "heading"
+     },
+     {
+      "text": "进入工作台",
+      "words": 1,
+      "chars": 5,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 1,
+      "top": 7495,
+      "tag": "a",
+      "kind": "heading"
+     },
+     {
+      "text": "中文关系抽取系统",
+      "words": 1,
+      "chars": 8,
+      "lines": 1,
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "weight": 500,
+      "tracking": 0,
+      "leading": 1.25,
+      "upper": false,
+      "italic": false,
+      "mono": false,
+      "align": "left",
+      "position": "center",
+      "widthRatio": 0.92,
+      "top": 7907,
+      "tag": "p",
+      "kind": "statement"
+     }
+    ],
+    "headingSummary": {
+     "count": 18,
+     "maxLines": 2,
+     "over2Lines": 0,
+     "statements": 1,
+     "centered": 0,
+     "medianWords": 1,
+     "mixedFontHeadings": 0
+    },
+    "type": {
+     "families": [
+      {
+       "family": "Space Grotesk",
+       "share": 0.95,
+       "mono": false
+      },
+      {
+       "family": "monospace",
+       "share": 0.05,
+       "mono": false
+      }
+     ],
+     "familyCount": 2,
+     "sizes": [
+      14,
+      16,
+      20,
+      32
+     ],
+     "sizeCount": 4,
+     "notLoaded": [],
+     "body": null,
+     "measureChars": null,
+     "max": {
+      "size": 32,
+      "vw": 8.2,
+      "font": "Space Grotesk",
+      "text": "抽出三元组，"
+     },
+     "monoShare": 0.05,
+     "monoProseShare": 0,
+     "monoFamilies": [
+      "monospace"
+     ],
+     "monoSamples": [],
+     "microLabels": 0,
+     "microLabelShare": 0,
+     "microSamples": [],
+     "upperShare": 0.05,
+     "centerShare": 0.01,
+     "smallText": 0
+    },
+    "eyebrows": [],
+    "numbered": [],
+    "color": {
+     "bodyBg": "#f5f2ea",
+     "bodyBgHsl": {
+      "h": 44,
+      "s": 0.35,
+      "l": 0.94
+     },
+     "dark": false,
+     "sectionBgs": [
+      {
+       "color": "#f5f2ea",
+       "top": 0,
+       "hsl": {
+        "h": 44,
+        "s": 0.35,
+        "l": 0.94
+       }
+      },
+      {
+       "color": "#fffdf7",
+       "top": 444,
+       "hsl": {
+        "h": 45,
+        "s": 1,
+        "l": 0.98
+       }
+      },
+      {
+       "color": "#1b1a17",
+       "top": 1474,
+       "hsl": {
+        "h": 45,
+        "s": 0.08,
+        "l": 0.1
+       }
+      },
+      {
+       "color": "#ece7db",
+       "top": 2004,
+       "hsl": {
+        "h": 42,
+        "s": 0.31,
+        "l": 0.89
+       }
+      },
+      {
+       "color": "#b3261e",
+       "top": 7495,
+       "hsl": {
+        "h": 3,
+        "s": 0.71,
+        "l": 0.41
+       }
+      }
+     ],
+     "textColors": [
+      {
+       "color": "#1a1a18",
+       "share": 0.35
+      },
+      {
+       "color": "#3f3d37",
+       "share": 0.3
+      },
+      {
+       "color": "#f5f2ea",
+       "share": 0.17
+      },
+      {
+       "color": "#615e55",
+       "share": 0.13
+      },
+      {
+       "color": "#b3261e",
+       "share": 0.04
+      }
+     ],
+     "button": {
+      "bg": "#f5f2ea",
+      "hsl": {
+       "h": 44,
+       "s": 0.35,
+       "l": 0.94
+      },
+      "fg": "#1b1a17"
+     },
+     "lowContrast": []
+    },
+    "buttons": {
+     "count": 6,
+     "inHero": 3,
+     "radius": 4,
+     "height": 38,
+     "withShadow": 0,
+     "withGradient": 0,
+     "mono": 0,
+     "upper": 0,
+     "heroLabels": [
+      "跳到主要内容",
+      "进入工作台",
+      "调用接口重跑"
+     ]
+    },
+    "surfaces": {
+     "shadowStatic": 0,
+     "shadowOverlay": 0,
+     "shadowSamples": [],
+     "gradients": 0,
+     "scrims": 0,
+     "gradientSamples": [],
+     "gradientText": 0,
+     "hairlines": 0,
+     "hairlineSamples": [],
+     "outlinedBoxes": 0,
+     "dashed": 0,
+     "blurred": 0,
+     "roundedBoxes": 0,
+     "boxRadius": 0,
+     "squareMedia": 0,
+     "roundedMedia": 4,
+     "mediaRadius": 4,
+     "textShadow": 0,
+     "cardRows": []
+    },
+    "heroMedia": [],
+    "nav": {
+     "links": 1,
+     "fixed": true,
+     "height": 56,
+     "floatingPill": false,
+     "blur": false
+    },
+    "fontsLoaded": [
+     "space grotesk"
+    ]
+   },
+   "layout": {
+    "viewport": {
+     "w": 390,
+     "h": 844
+    },
+    "pageH": 8111,
+    "margins": {
+     "left": 16,
+     "right": 16
+    },
+    "sections": [
+     {
+      "sel": "div.lp-frame",
+      "tag": "div",
+      "top": 88,
+      "height": 300,
+      "words": 4,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "抽出三元组，",
+       "size": 32,
+       "tag": "h1"
+      },
+      "left": 16,
+      "right": 34,
+      "textLeft": 16,
+      "textRight": 34,
+      "fullBleed": false,
+      "footer": false,
+      "hero": true,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "div#proof-sheet.lp-sheet-wrap",
+      "tag": "div",
+      "top": 444,
+      "height": 1030,
+      "words": 65,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "腾讯收购搜狗：交易结构与人事安排",
+       "size": 20,
+       "tag": "h2"
+      },
+      "left": 32,
+      "right": 32,
+      "textLeft": 32,
+      "textRight": 32,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#run.lp-section.lp-runsec",
+      "tag": "section",
+      "top": 1474,
+      "height": 530,
+      "words": 18,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "运行",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 16,
+      "textLeft": 16,
+      "textRight": 32,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#capabilities.lp-section.lp-capabilities",
+      "tag": "section",
+      "top": 2004,
+      "height": 1029,
+      "words": 29,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "能力",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 16,
+      "textLeft": 16,
+      "textRight": 24,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section.lp-section.lp-board-sec",
+      "tag": "section",
+      "top": 3033,
+      "height": 1028,
+      "words": 34,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "真实输出样例",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 16,
+      "textLeft": 16,
+      "textRight": 46,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#method.lp-section.lp-method",
+      "tag": "section",
+      "top": 4061,
+      "height": 689,
+      "words": 10,
+      "media": 1,
+      "middle": 0,
+      "heading": {
+       "text": "处理流程",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 22,
+      "textLeft": 16,
+      "textRight": 22,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section.lp-section.lp-views",
+      "tag": "section",
+      "top": 4750,
+      "height": 1270,
+      "words": 7,
+      "media": 3,
+      "middle": 0,
+      "heading": {
+       "text": "工作台的四个视图",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 34,
+      "textLeft": 16,
+      "textRight": 34,
+      "fullBleed": true,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#scope.lp-section.lp-scope",
+      "tag": "section",
+      "top": 6019,
+      "height": 748,
+      "words": 18,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "适用范围与已知限制",
+       "size": 20,
+       "tag": "h2"
+      },
+      "left": 35,
+      "right": 44,
+      "textLeft": 35,
+      "textRight": 44,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "section#faq.lp-section.lp-faq",
+      "tag": "section",
+      "top": 6767,
+      "height": 728,
+      "words": 10,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "常见问题",
+       "size": 32,
+       "tag": "h2"
+      },
+      "left": 16,
+      "right": 32,
+      "textLeft": 16,
+      "textRight": 38,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "a.lp-final",
+      "tag": "a",
+      "top": 7495,
+      "height": 280,
+      "words": 1,
+      "media": 0,
+      "middle": 0,
+      "heading": {
+       "text": "进入工作台",
+       "size": 32,
+       "tag": "span"
+      },
+      "left": 16,
+      "right": 214,
+      "textLeft": 16,
+      "textRight": 214,
+      "fullBleed": false,
+      "footer": false,
+      "hero": false,
+      "continues": true,
+      "pinned": false
+     },
+     {
+      "sel": "footer.lp-footer",
+      "tag": "footer",
+      "top": 7775,
+      "height": 336,
+      "words": 21,
+      "media": 0,
+      "middle": 34,
+      "heading": {
+       "text": "中文关系抽取系统",
+       "size": 32,
+       "tag": "p"
+      },
+      "left": 16,
+      "right": 16,
+      "textLeft": 16,
+      "textRight": 16,
+      "fullBleed": false,
+      "footer": true,
+      "hero": false,
+      "continues": false,
+      "pinned": false
+     }
+    ],
+    "gaps": [],
+    "h1s": [
+     {
+      "text": "抽出三元组， 附上原文出处。",
+      "size": 32,
+      "top": 88,
+      "firstScreen": true
+     }
+    ],
+    "edgeText": [],
+    "edges": [
+     {
+      "x": 16,
+      "n": 11
+     },
+     {
+      "x": 35,
+      "n": 1
+     }
+    ],
+    "leftBlocks": 12,
+    "bodySize": 16,
+    "stage": false,
+    "explains": true,
+    "slivers": [],
+    "voidShare": 0,
+    "voidBox": null
+   },
+   "app": null,
+   "consoleErrors": []
+  }
+ ],
+ "findings": [
+  {
+   "level": "WARN",
+   "id": "palette-cream",
+   "width": 1440,
+   "message": "Yellow-cream background (page background #f5f2ea, section #f5f2ea, section #fffdf7).",
+   "fix": "Use the drawn palette. If you want warmth, take a low-chroma stone or bone, not a yellow cream.",
+   "alsoAt": [
+    768,
+    390
+   ]
+  },
+  {
+   "level": "WARN",
+   "id": "no-footage",
+   "width": 1440,
+   "message": "No video anywhere on the page.",
+   "fix": "Look for one honest clip with scripts/assets.mjs --video (the place, the material, the process) and use it as a muted loop with a poster frame. Defend its absence only if no clip fits the subject."
+  }
+ ],
+ "images": [
+  {
+   "viewport": "desktop",
+   "width": 1440,
+   "fold": "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\desktop-fold.jpg",
+   "pages": [
+    "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\desktop-page-01.jpg",
+    "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\desktop-page-02.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "tablet",
+   "width": 768,
+   "fold": "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\tablet-fold.jpg",
+   "pages": [
+    "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\tablet-page-01.jpg",
+    "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\tablet-page-02.jpg"
+   ],
+   "film": []
+  },
+  {
+   "viewport": "mobile",
+   "width": 390,
+   "fold": "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\mobile-fold.jpg",
+   "pages": [
+    "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\mobile-page-01.jpg",
+    "D:\\OneDrive\\桌面\\软件工程作业（修改框架版）\\.taste-skill\\inspect\\mobile-page-02.jpg"
+   ],
+   "film": []
+  }
+ ]
+}
