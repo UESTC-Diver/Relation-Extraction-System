@@ -61,6 +61,7 @@
         <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text">
           <el-button class="wb-upload" :icon="Upload">上传</el-button>
         </el-upload>
+        <el-button :icon="Collection" @click="dictOpen = true">词典</el-button>
         <el-button
           type="primary"
           class="wb-run"
@@ -115,13 +116,16 @@
         </p>
       </el-collapse-item>
     </el-collapse>
+
+    <DictionaryDialog v-model="dictOpen" :schema="schema" />
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { InfoFilled, MagicStick, Upload } from '@element-plus/icons-vue'
+import { Collection, InfoFilled, MagicStick, Upload } from '@element-plus/icons-vue'
+import DictionaryDialog from './DictionaryDialog.vue'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -135,6 +139,7 @@ const emit = defineEmits(['update:modelValue', 'update:titleValue', 'run', 'file
 
 const opened = ref([])
 const activeSample = ref('')
+const dictOpen = ref(false)
 
 const text = computed({
   get: () => props.modelValue,

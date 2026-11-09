@@ -62,99 +62,6 @@ _DEMONSTRATIVE_RE = re.compile(
 _BOTH_RE = re.compile(r"双方|两方|两者|二者")
 _ORDER_RE = re.compile(r"后者|前者")
 
-# --------------------------------------------------------------------------- #
-# 指代消解与触发词容错资源
-# --------------------------------------------------------------------------- #
-_GROUP_SET = set(COREF_GROUP_WORDS)
-_LATER_SET = set(COREF_LATER_WORDS)
-_EARLIER_SET = set(COREF_EARLIER_WORDS)
-_DEFINITE_SET = set(COREF_DEFINITE_WORDS)
-_EVENT_SET = set(COREF_EVENT_WORDS)
-_COREF_RE = re.compile(
-    "|".join(
-        map(
-            re.escape,
-            sorted(
-                _GROUP_SET | _LATER_SET | _EARLIER_SET | _DEFINITE_SET | _EVENT_SET,
-                key=len,
-                reverse=True,
-            ),
-        )
-    )
-)
-_SALIENT_TYPES = {"ORG", "PERSON"}
-_CLAUSE_PUNCT = "，,；;。！？!?"
-# 事件回指词 -> 优先跟随的关系类型
-_EVENT_RELATION_PREF = {
-    "此次收购": ("acquire",),
-    "本次收购": ("acquire",),
-    "此次交易": ("acquire", "invest"),
-    "本次交易": ("acquire", "invest"),
-    "这笔交易": ("acquire", "invest"),
-    "该笔交易": ("acquire", "invest"),
-    "该交易": ("acquire", "invest"),
-    "这一交易": ("acquire", "invest"),
-    "此次合作": ("cooperate", "sign"),
-    "本次合作": ("cooperate", "sign"),
-    "此次投资": ("invest",),
-    "本次投资": ("invest",),
-}
-
-# 触发词内部允许插入的副词：按长度倒序，最长优先
-_FILLERS_BY_LENGTH = sorted(set(TRIGGER_FILLERS), key=len, reverse=True)
-
-
-def _is_cjk(ch: str) -> bool:
-    return "一" <= ch <= "鿿"
-
-
-def _trigger_view(text: str) -> tuple[str, list[int]]:
-    """剔除触发词内部插入的副词，返回 (规范化文本, 位置映射)。
-
-    例如 "饿了么总部仍位于上海" -> "饿了么总部位于上海"，
-    "总部仍位于" 在原文中仍是一个连续的触发片段。只剥离两侧都是
-    汉字、且属于 TRIGGER_FILLERS 的副词，否定词不在此列。
-    """
-    out: list[str] = []
-    mapping: list[int] = []
-    i, n = 0, len(text)
-    while i < n:
-        removed = 0
-        if 0 < i < n - 1 and _is_cjk(text[i - 1]):
-            for filler in _FILLERS_BY_LENGTH:
-                j = i + len(filler)
-                if j < n and text.startswith(filler, i) and _is_cjk(text[j]):
-                    removed = len(filler)
-                    break
-        if removed:
-            i += removed
-            continue
-        out.append(text[i])
-        mapping.append(i)
-        i += 1
-    return "".join(out), mapping
-
-
-def _ordered_distinct(entities: list[Entity]) -> list[Entity]:
-    """按首次出现顺序去重（同一实体只保留第一次提及）。"""
-    seen: set[tuple[str, str]] = set()
-    out: list[Entity] = []
-    for e in entities:
-        key = (canonical_name(e.text, e.type), e.type)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(e)
-    return out
-
-
-def _latest(candidates: list[Entity], etype: str | None = None) -> Entity | None:
-    for e in reversed(candidates):
-        if etype is None or e.type == etype:
-            return e
-    return None
-
-
 def _render(span: str, order: list[Entity]) -> str:
     """把掩码片段还原成可读文本（占位符替换回实体名）。"""
 
@@ -438,7 +345,7 @@ class RelationExtractor:
         for trig in TRIGGERS_BY_LENGTH:
             start = 0
             while True:
-                idx = norm.find(trig, start)
+                idx = text.find(trig, start)
                 if idx < 0:
                     break
                 occurrences.append((idx, idx + len(trig), trig, TRIGGER_INDEX[trig]))
@@ -472,6 +379,7 @@ class RelationExtractor:
         ts: int, te: int, trig: str, doc: DocumentContext,
     ) -> list[Triple]:
         text = sent.text
+        display = trig
 
         # ---- "供货协议 / 供应合同"：名词短语而非事件，签署关系已覆盖 ----
         if rule.key == "supply" and _SUPPLY_NOUN_TAIL.match(text, te):
@@ -500,51 +408,6 @@ class RelationExtractor:
             person = self._nearest_before(ents, org.start, window=16)
             if person and person.type == "PERSON" and person.start != org.start:
                 return [self._make(person, org, rule, odist, sent, display, "attributive", -0.03)]
-
-        # ---- "后者...供应..."：后者是供应方，另一方是接收方 ----
-        if rule.key == "supply":
-            for left, ldist in lefts:
-                if left.ref_kind != "pair" or not self._same_clause(text, left.end, ts):
-                    continue
-                # "后者将向 X 供应..."：X 是显式接收方；
-                # "后者将供应..."：另一方是隐含接收方。
-                recipient = next(
-                    (
-                        e for e, _ in lefts
-                        if e is not left and e.start >= left.end and e.type == "ORG"
-                    ),
-                    left.ref_other,
-                )
-                if recipient is not None and rule.accepts(left.type, recipient.type):
-                    return [
-                        self._make(left, recipient, rule, ldist, sent, display, "coref", -0.03)
-                    ]
-
-        # ---- "宁德时代将为该工厂供应..."：供应方是"为"之前的机构 ----
-        if rule.key == "supply" and lefts and lefts[0][0].ref_kind == "single":
-            ref, _ = lefts[0]
-            for supplier, sdist in lefts[1:]:
-                if supplier.type != "ORG" or not self._same_clause(text, supplier.end, ts):
-                    continue
-                if "为" not in text[supplier.end:ref.start]:
-                    continue
-                for r, rdist in rights:
-                    if rule.accepts(supplier.type, r.type):
-                        return [
-                            self._make(
-                                supplier, r, rule, sdist + rdist, sent, display, "trigger"
-                            )
-                        ]
-                if rule.accepts(supplier.type, ref.type):
-                    return [
-                        self._make(supplier, ref, rule, sdist, sent, display, "trigger")
-                    ]
-                break
-
-        # ---- "A 与 B 签署..."：用分句主语作头实体，避免并列宾语抢主语 ----
-        comitative = self._comitative_subject(sent, ents, ts, rule, display)
-        if comitative is not None:
-            return [comitative]
 
         # ---- 分句以"并/且/也……"开头：主语继承上一分句（主语链）----
         if self._chain_clause_start(text, ts):
@@ -735,9 +598,9 @@ class RelationExtractor:
                 if lm is None or rm is None or lm.start == rm.start:
                     continue
                 if rule.accepts(lm.type, rm.type):
-                    return [self._make(lm, rm, rule, ldist + rdist, sent, trig, "trigger")]
+                    return [self._make(lm, rm, rule, ldist + rdist, sent, display, "trigger")]
                 if rule.accepts(rm.type, lm.type):
-                    return [self._make(rm, lm, rule, ldist + rdist, sent, trig, "trigger")]
+                    return [self._make(rm, lm, rule, ldist + rdist, sent, display, "trigger")]
         return []
 
     def _make(

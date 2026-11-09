@@ -50,12 +50,21 @@ CREATE TABLE IF NOT EXISTS relations (
     evidence     TEXT    NOT NULL DEFAULT '',
     trigger      TEXT    NOT NULL DEFAULT '',
     sentence_index INTEGER NOT NULL DEFAULT 0,
+    rule_base    TEXT    NOT NULL DEFAULT 'trigger',
     FOREIGN KEY (record_id) REFERENCES records (id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_relations_record ON relations (record_id);
 CREATE INDEX IF NOT EXISTS idx_relations_key ON relations (relation);
 CREATE INDEX IF NOT EXISTS idx_records_created ON records (created_at DESC);
+
+-- 用户自定义实体词典（全局共享，抽取时优先于规则识别）
+CREATE TABLE IF NOT EXISTS custom_terms (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    text       TEXT    NOT NULL UNIQUE,
+    type       TEXT    NOT NULL,
+    created_at TEXT    NOT NULL
+);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
@@ -90,30 +99,35 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    """为旧库补齐归一化字段，并回填历史数据（幂等）。"""
+    """为旧库补齐归一化字段与抽取来源，并回填历史数据（幂等）。"""
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(relations)")}
     missing = [c for c in ("head_canonical", "tail_canonical") if c not in cols]
-    if not missing:
-        return
-    for col in missing:
-        conn.execute(f"ALTER TABLE relations ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
+    if missing:
+        for col in missing:
+            conn.execute(f"ALTER TABLE relations ADD COLUMN {col} TEXT NOT NULL DEFAULT ''")
 
-    from .nlp.entity import canonical_name
+        from .nlp.entity import canonical_name
 
-    rows = conn.execute(
-        "SELECT id, head, head_type, tail, tail_type FROM relations"
-    ).fetchall()
-    conn.executemany(
-        "UPDATE relations SET head_canonical = ?, tail_canonical = ? WHERE id = ?",
-        [
-            (
-                canonical_name(r["head"], r["head_type"]),
-                canonical_name(r["tail"], r["tail_type"]),
-                r["id"],
-            )
-            for r in rows
-        ],
-    )
+        rows = conn.execute(
+            "SELECT id, head, head_type, tail, tail_type FROM relations"
+        ).fetchall()
+        conn.executemany(
+            "UPDATE relations SET head_canonical = ?, tail_canonical = ? WHERE id = ?",
+            [
+                (
+                    canonical_name(r["head"], r["head_type"]),
+                    canonical_name(r["tail"], r["tail_type"]),
+                    r["id"],
+                )
+                for r in rows
+            ],
+        )
+
+    # 人工校正需要区分自动抽取与手工录入
+    if "rule_base" not in cols:
+        conn.execute(
+            "ALTER TABLE relations ADD COLUMN rule_base TEXT NOT NULL DEFAULT 'trigger'"
+        )
 
 
 def init_db() -> None:
@@ -121,6 +135,43 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         _migrate(conn)
         conn.executescript(INDEX_AFTER_MIGRATE)
+
+
+def _insert_relations(
+    conn: sqlite3.Connection, record_id: int, relations: list[dict[str, Any]]
+) -> None:
+    if not relations:
+        return
+    from .nlp.entity import canonical_name
+
+    conn.executemany(
+        """
+        INSERT INTO relations (record_id, head, head_canonical, head_type,
+                               relation, relation_label, tail, tail_canonical,
+                               tail_type, confidence, evidence, trigger,
+                               sentence_index, rule_base)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                record_id,
+                r["head"],
+                r.get("head_canonical") or canonical_name(r["head"], r["head_type"]),
+                r["head_type"],
+                r["relation"],
+                r["relation_label"],
+                r["tail"],
+                r.get("tail_canonical") or canonical_name(r["tail"], r["tail_type"]),
+                r["tail_type"],
+                float(r.get("confidence", 0)),
+                r.get("evidence", ""),
+                r.get("trigger", ""),
+                int(r.get("sentence_index", 0)),
+                r.get("rule_base") or "trigger",
+            )
+            for r in relations
+        ],
+    )
 
 
 def save_record(
@@ -131,6 +182,7 @@ def save_record(
 ) -> int:
     stats = result.get("stats", {})
     entities = result.get("entities", [])
+    relations = result.get("relations", [])
     if not title:
         title = (result.get("text", "")[:24] + "…") if len(result.get("text", "")) > 24 else result.get("text", "")
     with connect() as conn:
@@ -148,7 +200,7 @@ def save_record(
                 stats.get("char_count", 0),
                 stats.get("sentence_count", 0),
                 stats.get("entity_count", 0),
-                stats.get("relation_count", 0),
+                len(relations),
                 json.dumps(result.get("entity_type_counts", {}), ensure_ascii=False),
                 json.dumps(entities, ensure_ascii=False),
                 stats.get("elapsed_ms", 0.0),
@@ -157,35 +209,7 @@ def save_record(
         )
         record_id = int(cur.lastrowid)
         if store_relations:
-            from .nlp.entity import canonical_name
-
-            conn.executemany(
-                """
-                INSERT INTO relations (record_id, head, head_canonical, head_type,
-                                       relation, relation_label, tail, tail_canonical,
-                                       tail_type, confidence, evidence, trigger,
-                                       sentence_index)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        record_id,
-                        r["head"],
-                        r.get("head_canonical") or canonical_name(r["head"], r["head_type"]),
-                        r["head_type"],
-                        r["relation"],
-                        r["relation_label"],
-                        r["tail"],
-                        r.get("tail_canonical") or canonical_name(r["tail"], r["tail_type"]),
-                        r["tail_type"],
-                        float(r.get("confidence", 0)),
-                        r.get("evidence", ""),
-                        r.get("trigger", ""),
-                        int(r.get("sentence_index", 0)),
-                    )
-                    for r in result.get("relations", [])
-                ],
-            )
+            _insert_relations(conn, record_id, relations)
     return record_id
 
 
@@ -245,10 +269,28 @@ def get_record(record_id: int) -> dict[str, Any] | None:
             "evidence": r["evidence"],
             "trigger": r["trigger"],
             "sentence_index": r["sentence_index"],
+            "rule_base": r["rule_base"] or "trigger",
         }
         for r in rels
     ]
     return data
+
+
+def replace_relations(record_id: int, relations: list[dict[str, Any]]) -> bool:
+    """用人工校正后的三元组整体替换某条历史记录的关系，并同步计数。"""
+    with connect() as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM records WHERE id = ?", (record_id,)
+        ).fetchone()
+        if not exists:
+            return False
+        conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
+        _insert_relations(conn, record_id, relations)
+        conn.execute(
+            "UPDATE records SET relation_count = ? WHERE id = ?",
+            (len(relations), record_id),
+        )
+    return True
 
 
 def delete_record(record_id: int) -> bool:
@@ -308,3 +350,42 @@ def overview() -> dict[str, Any]:
         "top_entities": [dict(r) for r in top_entities],
         "recent": [dict(r) for r in recent],
     }
+
+
+# --------------------------------------------------------------------------- #
+# 自定义实体词典
+# --------------------------------------------------------------------------- #
+
+def list_custom_terms() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id, text, type, created_at FROM custom_terms ORDER BY id DESC"
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_custom_term(text: str, term_type: str) -> dict[str, Any]:
+    """新增词条；已存在时返回原记录并标记 duplicate。"""
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO custom_terms (text, type, created_at) VALUES (?, ?, ?)",
+            (text, term_type, _now()),
+        )
+        row = conn.execute(
+            "SELECT id, text, type, created_at FROM custom_terms WHERE text = ?", (text,)
+        ).fetchone()
+    data = dict(row)
+    data["duplicate"] = cur.rowcount == 0
+    return data
+
+
+def delete_custom_term(term_id: int) -> bool:
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM custom_terms WHERE id = ?", (term_id,))
+    return cur.rowcount > 0
+
+
+def clear_custom_terms() -> int:
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM custom_terms")
+    return cur.rowcount

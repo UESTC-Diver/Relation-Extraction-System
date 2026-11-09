@@ -182,6 +182,12 @@
             :relations="result.relations || []"
             :schema="schema"
             :entity-filter="entityFilter"
+            :sentences="result.sentences || []"
+            :record-id="activeRecordId"
+            :dirty="relationsDirty"
+            :saving="savingRelations"
+            @update:relations="onRelationsChange"
+            @save="saveCorrections"
             @locate="onLocate"
             @clear-filter="entityFilter = null"
           />
@@ -289,6 +295,8 @@ const stats = ref({})
 const historyOpen = ref(false)
 const activeRecordId = ref(null)
 const graphRef = ref(null)
+const relationsDirty = ref(false)
+const savingRelations = ref(false)
 
 /* 【创新点 2】结果就绪后左栏收窄，把宽度让给正文 */
 const compact = ref(false)
@@ -389,6 +397,8 @@ function applyResult(payload, recordId = null) {
   activeRecordId.value = recordId
   entityFilter.value = null
   link.value = null
+  relationsDirty.value = false
+  savingRelations.value = false
   refreshStats()
 }
 
@@ -421,8 +431,53 @@ async function runExtract({ save = true } = {}) {
   }
 }
 
-function saveCurrent() {
-  runExtract({ save: true })
+/** 保存当前结果快照（含未保存的人工校正），而不是重新跑一遍抽取。 */
+async function saveCurrent() {
+  if (!result.value) return
+  loading.value = true
+  try {
+    const res = await api.saveSnapshot(result.value, title.value, 'text')
+    activeRecordId.value = res.record_id
+    relationsDirty.value = false
+    await refreshStats()
+    liveMessage.value = `已存入历史 #${res.record_id}`
+    ElMessage.success(`已存入历史 #${res.record_id}`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+function onRelationsChange(relations) {
+  if (!result.value) return
+  result.value.relations = relations
+  result.value.stats = { ...(result.value.stats || {}), relation_count: relations.length }
+  const counts = {}
+  for (const r of relations) counts[r.relation] = (counts[r.relation] || 0) + 1
+  result.value.relation_type_counts = counts
+  relationsDirty.value = true
+}
+
+async function saveCorrections() {
+  if (!activeRecordId.value) {
+    ElMessage.warning('请先点击上方「存入历史」')
+    return
+  }
+  if (!result.value) return
+  savingRelations.value = true
+  try {
+    const record = await api.saveRelations(activeRecordId.value, result.value.relations || [])
+    onRelationsChange(record.relations || [])
+    relationsDirty.value = false
+    await refreshStats()
+    liveMessage.value = `校正已保存，共 ${record.relation_count} 条三元组`
+    ElMessage.success(`校正已保存（${record.relation_count} 条）`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    savingRelations.value = false
+  }
 }
 
 const EXPORT_MIME = {
@@ -485,6 +540,8 @@ function onClear() {
   entityFilter.value = null
   link.value = null
   loadError.value = ''
+  relationsDirty.value = false
+  savingRelations.value = false
 }
 
 function onLoadRecord(record) {

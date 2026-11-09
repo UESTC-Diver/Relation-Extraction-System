@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import db
 from .nlp.tokenizer import warmup
-from .routers import extract, meta
+from .routers import dictionary, extract, meta
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -36,9 +36,10 @@ app = FastAPI(
     description=(
         "基于词典与词法规则的中文实体识别 + 关系抽取服务。\n\n"
         "识别实体：人物 / 组织机构 / 地理位置 / 时间 / 金额 / 产品技术\n"
-        "抽取关系：19 类，输出 <头实体, 关系, 尾实体> 三元组"
+        "抽取关系：19 类，输出 <头实体, 关系, 尾实体> 三元组\n"
+        "支持人工校正、证据联动与自定义实体词典"
     ),
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -52,6 +53,7 @@ app.add_middleware(
 
 app.include_router(extract.router)
 app.include_router(meta.router)
+app.include_router(dictionary.router)
 
 
 @app.get("/", include_in_schema=False)
