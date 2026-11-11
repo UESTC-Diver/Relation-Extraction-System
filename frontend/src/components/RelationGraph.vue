@@ -152,7 +152,7 @@ function buildOption() {
     value: n.degree,
     itemStyle: {
       color: typeColor(n.type),
-      borderColor: '#ffffff',
+      borderColor: '#fffdf6',
       borderWidth: 2,
       shadowBlur: 10,
       shadowColor: 'rgba(16,18,22,0.10)',
@@ -163,9 +163,9 @@ function buildOption() {
       position: 'bottom',
       distance: 7,
       fontSize: 11.5,
-      color: '#17181c',
+      color: '#1e1c18',
       fontWeight: 500,
-      textBorderColor: 'rgba(255,255,255,0.95)',
+      textBorderColor: 'rgba(255,253,246,0.95)',
       textBorderWidth: 3,
     },
   }))
@@ -186,8 +186,8 @@ function buildOption() {
       position: 'middle',
       rotate: 0,
       fontSize: 10,
-      color: '#494f57',
-      backgroundColor: 'rgba(255,255,255,0.94)',
+      color: '#615d52',
+      backgroundColor: 'rgba(255,253,246,0.94)',
       borderColor: 'rgba(16,18,22,0.06)',
       borderWidth: 1,
       padding: [1.5, 4],
@@ -203,9 +203,9 @@ function buildOption() {
     animationDuration: 480,
     tooltip: {
       confine: true,
-      backgroundColor: 'rgba(23,24,28,0.94)',
+      backgroundColor: 'rgba(32,30,25,0.94)',
       borderWidth: 0,
-      textStyle: { color: '#f2f3f5', fontSize: 12 },
+      textStyle: { color: '#f6f3ea', fontSize: 12 },
       extraCssText: 'border-radius:8px;padding:8px 11px;box-shadow:0 10px 28px -12px rgba(0,0,0,.5);',
     },
     series: [
@@ -276,7 +276,7 @@ function relayout() {
 /** 返回当前图谱的 PNG dataURL，无图时返回 null。供结果面板的导出菜单调用。 */
 function snapshot() {
   if (!chart || !edges.value.length) return null
-  return chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#ffffff' })
+  return chart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fffdf6' })
 }
 
 function savePng() {
@@ -451,7 +451,7 @@ watch([layout, showEdgeLabel, mergeNodes], render)
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 253, 246, 0.86);
 }
 
 /* 键盘选中的节点说明 */

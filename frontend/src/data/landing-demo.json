@@ -1,0 +1,417 @@
+{
+  "note": "本文件由 app.nlp.pipeline 的真实输出导出，用于首页演示；不含编造数据。",
+  "sample": {
+    "title": "腾讯收购搜狗：交易结构与人事安排",
+    "text": "9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司全部流通股，交易总金额约为35亿美元。搜狗公司成立于2004年，总部位于北京，创始人为王小川。交易完成后，搜狗将成为腾讯控股的全资子公司，王小川出任腾讯控股副总裁。腾讯控股CEO马化腾表示，本次并购将显著加强公司在搜索领域的技术能力。此前，腾讯控股已投资搜狗多年，并与搜狐签署了相关协议。",
+    "stats": {
+      "char_count": 171,
+      "sentence_count": 5,
+      "entity_count": 18,
+      "relation_count": 9,
+      "unique_entity_count": 11,
+      "elapsed_ms": 481.2
+    },
+    "sentences": [
+      {
+        "index": 0,
+        "text": "9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司全部流通股，交易总金额约为35亿美元。",
+        "start": 0,
+        "end": 46
+      },
+      {
+        "index": 1,
+        "text": "搜狗公司成立于2004年，总部位于北京，创始人为王小川。",
+        "start": 46,
+        "end": 74
+      },
+      {
+        "index": 2,
+        "text": "交易完成后，搜狗将成为腾讯控股的全资子公司，王小川出任腾讯控股副总裁。",
+        "start": 74,
+        "end": 109
+      },
+      {
+        "index": 3,
+        "text": "腾讯控股CEO马化腾表示，本次并购将显著加强公司在搜索领域的技术能力。",
+        "start": 109,
+        "end": 144
+      },
+      {
+        "index": 4,
+        "text": "此前，腾讯控股已投资搜狗多年，并与搜狐签署了相关协议。",
+        "start": 144,
+        "end": 171
+      }
+    ],
+    "entities": [
+      {
+        "text": "9月5日",
+        "label": "时间",
+        "color": "#f59e0b",
+        "start": 0,
+        "end": 4,
+        "sentence_index": 0
+      },
+      {
+        "text": "腾讯控股",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 5,
+        "end": 9,
+        "sentence_index": 0
+      },
+      {
+        "text": "58美元",
+        "label": "金额",
+        "color": "#8b5cf6",
+        "start": 14,
+        "end": 18,
+        "sentence_index": 0
+      },
+      {
+        "text": "搜狗公司",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 23,
+        "end": 27,
+        "sentence_index": 0
+      },
+      {
+        "text": "35亿美元",
+        "label": "金额",
+        "color": "#8b5cf6",
+        "start": 40,
+        "end": 45,
+        "sentence_index": 0
+      },
+      {
+        "text": "搜狗公司",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 46,
+        "end": 50,
+        "sentence_index": 1
+      },
+      {
+        "text": "2004年",
+        "label": "时间",
+        "color": "#f59e0b",
+        "start": 53,
+        "end": 58,
+        "sentence_index": 1
+      },
+      {
+        "text": "北京",
+        "label": "地理位置",
+        "color": "#10b981",
+        "start": 63,
+        "end": 65,
+        "sentence_index": 1
+      },
+      {
+        "text": "王小川",
+        "label": "人物",
+        "color": "#6366f1",
+        "start": 70,
+        "end": 73,
+        "sentence_index": 1
+      },
+      {
+        "text": "搜狗",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 80,
+        "end": 82,
+        "sentence_index": 2
+      },
+      {
+        "text": "腾讯控股",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 85,
+        "end": 89,
+        "sentence_index": 2
+      },
+      {
+        "text": "王小川",
+        "label": "人物",
+        "color": "#6366f1",
+        "start": 96,
+        "end": 99,
+        "sentence_index": 2
+      },
+      {
+        "text": "腾讯控股",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 101,
+        "end": 105,
+        "sentence_index": 2
+      },
+      {
+        "text": "腾讯控股",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 109,
+        "end": 113,
+        "sentence_index": 3
+      },
+      {
+        "text": "马化腾",
+        "label": "人物",
+        "color": "#6366f1",
+        "start": 116,
+        "end": 119,
+        "sentence_index": 3
+      },
+      {
+        "text": "腾讯控股",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 147,
+        "end": 151,
+        "sentence_index": 4
+      },
+      {
+        "text": "搜狗",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 154,
+        "end": 156,
+        "sentence_index": 4
+      },
+      {
+        "text": "搜狐",
+        "label": "组织机构",
+        "color": "#0ea5e9",
+        "start": 161,
+        "end": 163,
+        "sentence_index": 4
+      }
+    ],
+    "relations": [
+      {
+        "head": "搜狗",
+        "tail": "腾讯控股",
+        "key": "subsidiary",
+        "label": "子公司",
+        "color": "#c026d3",
+        "sentence_index": 2,
+        "confidence": 0.94,
+        "trigger": "搜狗将成为腾讯控股的全资子公司",
+        "evidence": "交易完成后，搜狗将成为腾讯控股的全资子公司，王小川出任腾讯控股副总裁。"
+      },
+      {
+        "head": "搜狗公司",
+        "tail": "2004年",
+        "key": "founded_at",
+        "label": "成立于",
+        "color": "#f59e0b",
+        "sentence_index": 1,
+        "confidence": 0.93,
+        "trigger": "成立于",
+        "evidence": "搜狗公司成立于2004年，总部位于北京，创始人为王小川。"
+      },
+      {
+        "head": "王小川",
+        "tail": "腾讯控股",
+        "key": "employ",
+        "label": "任职于",
+        "color": "#6366f1",
+        "sentence_index": 2,
+        "confidence": 0.93,
+        "trigger": "出任",
+        "evidence": "交易完成后，搜狗将成为腾讯控股的全资子公司，王小川出任腾讯控股副总裁。"
+      },
+      {
+        "head": "马化腾",
+        "tail": "腾讯控股",
+        "key": "employ",
+        "label": "任职于",
+        "color": "#6366f1",
+        "sentence_index": 3,
+        "confidence": 0.93,
+        "trigger": "CEO",
+        "evidence": "腾讯控股CEO马化腾表示，本次并购将显著加强公司在搜索领域的技术能力。"
+      },
+      {
+        "head": "腾讯控股",
+        "tail": "搜狗",
+        "key": "invest",
+        "label": "投资",
+        "color": "#ea580c",
+        "sentence_index": 4,
+        "confidence": 0.92,
+        "trigger": "投资",
+        "evidence": "此前，腾讯控股已投资搜狗多年，并与搜狐签署了相关协议。"
+      },
+      {
+        "head": "腾讯控股",
+        "tail": "搜狐",
+        "key": "sign",
+        "label": "签署协议",
+        "color": "#2563eb",
+        "sentence_index": 4,
+        "confidence": 0.87,
+        "trigger": "签署",
+        "evidence": "此前，腾讯控股已投资搜狗多年，并与搜狐签署了相关协议。"
+      },
+      {
+        "head": "搜狗公司",
+        "tail": "北京",
+        "key": "headquarter",
+        "label": "总部位于",
+        "color": "#10b981",
+        "sentence_index": 1,
+        "confidence": 0.81,
+        "trigger": "总部位于",
+        "evidence": "搜狗公司成立于2004年，总部位于北京，创始人为王小川。"
+      },
+      {
+        "head": "腾讯控股",
+        "tail": "搜狗公司",
+        "key": "acquire",
+        "label": "收购",
+        "color": "#f43f5e",
+        "sentence_index": 0,
+        "confidence": 0.77,
+        "trigger": "收购",
+        "evidence": "9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司全部流通股，交易总金额约为35亿美元。"
+      },
+      {
+        "head": "王小川",
+        "tail": "搜狗公司",
+        "key": "found",
+        "label": "创立",
+        "color": "#0891b2",
+        "sentence_index": 1,
+        "confidence": 0.71,
+        "trigger": "创始人",
+        "evidence": "搜狗公司成立于2004年，总部位于北京，创始人为王小川。"
+      }
+    ]
+  },
+  "catalog": [
+    {
+      "key": "acquire",
+      "label": "收购",
+      "description": "机构之间的一方取得另一方控制权的交易"
+    },
+    {
+      "key": "invest",
+      "label": "投资",
+      "description": "一方以资金换取另一方股权（或向某地投资）的行为"
+    },
+    {
+      "key": "control",
+      "label": "控股",
+      "description": "一方持有另一方多数股权"
+    },
+    {
+      "key": "subsidiary",
+      "label": "子公司",
+      "description": "组织之间的隶属与控股关系"
+    },
+    {
+      "key": "employ",
+      "label": "任职于",
+      "description": "人物在某组织担任职务"
+    },
+    {
+      "key": "appoint",
+      "label": "任命",
+      "description": "组织对人物的职务任命"
+    },
+    {
+      "key": "headquarter",
+      "label": "总部位于",
+      "description": "组织总部所在地"
+    },
+    {
+      "key": "locate",
+      "label": "位于",
+      "description": "实体的地理位置"
+    },
+    {
+      "key": "found",
+      "label": "创立",
+      "description": "人物创建组织"
+    },
+    {
+      "key": "founded_at",
+      "label": "成立于",
+      "description": "组织的成立时间"
+    },
+    {
+      "key": "graduate",
+      "label": "毕业于",
+      "description": "人物的教育背景"
+    },
+    {
+      "key": "born",
+      "label": "出生于",
+      "description": "人物的出生地"
+    },
+    {
+      "key": "cooperate",
+      "label": "合作",
+      "description": "组织之间的业务协作"
+    },
+    {
+      "key": "compete",
+      "label": "竞争",
+      "description": "组织之间的市场竞争关系"
+    },
+    {
+      "key": "supply",
+      "label": "供应",
+      "description": "产业链上下游的供应关系"
+    },
+    {
+      "key": "sign",
+      "label": "签署协议",
+      "description": "组织之间签署合作协议"
+    },
+    {
+      "key": "sue",
+      "label": "诉讼",
+      "description": "主体之间的法律诉讼"
+    },
+    {
+      "key": "launch",
+      "label": "发布",
+      "description": "组织发布产品或技术"
+    },
+    {
+      "key": "belong",
+      "label": "隶属于",
+      "description": "组织之间的行政隶属关系"
+    }
+  ],
+  "entityTypes": [
+    {
+      "label": "人物",
+      "color": "#6366f1"
+    },
+    {
+      "label": "组织机构",
+      "color": "#0ea5e9"
+    },
+    {
+      "label": "地理位置",
+      "color": "#10b981"
+    },
+    {
+      "label": "时间",
+      "color": "#f59e0b"
+    },
+    {
+      "label": "金额",
+      "color": "#8b5cf6"
+    },
+    {
+      "label": "产品技术",
+      "color": "#f43f5e"
+    }
+  ]
+}

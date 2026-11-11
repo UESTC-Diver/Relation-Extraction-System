@@ -1,25 +1,34 @@
 <template>
-  <div class="app">
+  <LandingPage v-if="page === 'landing'" />
+
+  <div v-else-if="page === 'missing'" class="missing" role="main">
+    <p class="missing-code">404</p>
+    <h1 class="missing-title">这一页不存在</h1>
+    <p class="missing-note">地址没有对应的页面。首页介绍这套系统，工作台用来实际抽取。</p>
+    <div class="missing-links">
+      <a href="/">返回首页</a>
+      <a href="/app">进入工作台</a>
+    </div>
+  </div>
+
+  <div v-else class="app">
     <a class="skip-link" href="#result-panel">跳到抽取结果</a>
 
     <header class="appbar">
-      <div class="appbar-brand">
+      <a class="appbar-brand" href="/" title="返回首页" aria-label="中文关系抽取系统，返回首页">
         <svg class="appbar-logo" viewBox="0 0 26 26" fill="none" aria-hidden="true">
           <path
             d="M8.1 8.4 L18.1 11 M8.5 10 L11.2 17.2 M18.4 12.6 L14.6 18.2"
-            stroke="#c9ced4"
+            stroke="#ddd5c2"
             stroke-width="1.3"
             stroke-linecap="round"
           />
-          <circle cx="6.6" cy="7.8" r="3.1" fill="#1f2126" />
-          <circle cx="20.2" cy="10.6" r="3.1" fill="#1f2126" />
-          <circle cx="13" cy="20" r="3.1" fill="#2f5cf6" />
+          <circle cx="6.6" cy="7.8" r="3.1" fill="#201e19" />
+          <circle cx="20.2" cy="10.6" r="3.1" fill="#201e19" />
+          <circle cx="13" cy="20" r="3.1" fill="#a8322a" />
         </svg>
-        <div>
-          <h1 class="appbar-name">中文关系抽取系统</h1>
-          <span class="appbar-sub">规则式 NLP · 6 类实体 · 19 类关系 · 三元组与图谱</span>
-        </div>
-      </div>
+        <h1 class="appbar-name">中文关系抽取系统</h1>
+      </a>
 
       <div class="appbar-right">
         <div class="appbar-metric">
@@ -58,7 +67,6 @@
           编辑文本
         </button>
         <p v-if="activeRecordId" class="cp-saved">已存入历史 #{{ activeRecordId }}</p>
-        <p v-else class="cp-saved">尚未存入历史，可在右侧「存入历史」</p>
       </section>
 
       <section v-else class="panel input-panel">
@@ -80,6 +88,9 @@
         :aria-busy="loading ? 'true' : 'false'"
         tabindex="-1"
       >
+        <!-- 新结果落纸：朱红扫光与首页「接口重跑」回显同源。
+             key 随结果版本变化，重跑时元素重建即重播，动画不会叠加。 -->
+        <div v-if="result" :key="resultVersion" class="result-scan" aria-hidden="true"></div>
         <div class="panel-head">
           <div class="panel-title">
             抽取结果
@@ -94,11 +105,18 @@
           <div class="head-right">
             <div
               v-if="result"
+              ref="segmentedRef"
               class="segmented"
               role="tablist"
               aria-label="结果视图切换"
               @keydown="onTabKeydown"
             >
+              <span
+                class="seg-indicator"
+                :class="{ 'is-ready': indicatorReady }"
+                :style="indicatorStyle"
+                aria-hidden="true"
+              ></span>
               <button
                 v-for="t in TABS"
                 :id="'tab-' + t.name"
@@ -170,7 +188,7 @@
           </button>
         </div>
 
-        <div v-if="result" class="result-body" role="tabpanel" :aria-labelledby="'tab-' + tab">
+        <div v-if="result" :key="resultVersion" class="result-body" role="tabpanel" :aria-labelledby="'tab-' + tab">
           <EntityAnnotator
             v-if="tab === 'entities'"
             :result="result"
@@ -182,12 +200,6 @@
             :relations="result.relations || []"
             :schema="schema"
             :entity-filter="entityFilter"
-            :sentences="result.sentences || []"
-            :record-id="activeRecordId"
-            :dirty="relationsDirty"
-            :saving="savingRelations"
-            @update:relations="onRelationsChange"
-            @save="saveCorrections"
             @locate="onLocate"
             @clear-filter="entityFilter = null"
           />
@@ -209,16 +221,16 @@
 
         <div v-else class="hero">
           <svg class="hero-art" viewBox="0 0 240 112" fill="none" aria-hidden="true">
-            <path d="M52 56 L96 40 M100 46 L156 62" stroke="#e2e5e9" stroke-width="1.6" stroke-linecap="round" />
-            <path d="M52 56 L156 62" stroke="#eef0f2" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="4 5" />
-            <circle cx="44" cy="58" r="14" fill="#fff" stroke="#d7dae0" stroke-width="1.5" />
-            <circle cx="44" cy="58" r="4.5" fill="#1f2126" />
-            <circle cx="106" cy="38" r="17" fill="#fff" stroke="#d7dae0" stroke-width="1.5" />
-            <circle cx="106" cy="38" r="5.5" fill="#2f5cf6" />
-            <circle cx="164" cy="66" r="12" fill="#fff" stroke="#d7dae0" stroke-width="1.5" />
-            <circle cx="164" cy="66" r="4" fill="#1f2126" />
-            <rect x="88" y="58" width="44" height="21" rx="6" fill="#f2f3f5" stroke="#e2e5e9" />
-            <text x="110" y="72.5" text-anchor="middle" font-size="11" fill="#494f57">收购</text>
+            <path d="M52 56 L96 40 M100 46 L156 62" stroke="#ddd5c2" stroke-width="1.6" stroke-linecap="round" />
+            <path d="M52 56 L156 62" stroke="#f6f3ea" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="4 5" />
+            <circle cx="44" cy="58" r="14" fill="#fffdf6" stroke="#c4bba6" stroke-width="1.5" />
+            <circle cx="44" cy="58" r="4.5" fill="#201e19" />
+            <circle cx="106" cy="38" r="17" fill="#fffdf6" stroke="#c4bba6" stroke-width="1.5" />
+            <circle cx="106" cy="38" r="5.5" fill="#a8322a" />
+            <circle cx="164" cy="66" r="12" fill="#fffdf6" stroke="#c4bba6" stroke-width="1.5" />
+            <circle cx="164" cy="66" r="4" fill="#201e19" />
+            <rect x="88" y="58" width="44" height="21" rx="6" fill="#ebe5d6" stroke="#ddd5c2" />
+            <text x="110" y="72.5" text-anchor="middle" font-size="11" fill="#615d52">收购</text>
           </svg>
 
           <h2>粘贴一段新闻，自动抽出实体与关系</h2>
@@ -229,21 +241,18 @@
 
           <div class="hero-steps">
             <div class="step">
-              <span class="step-no">1</span>
               <div>
                 <b>输入文本</b>
                 <p>粘贴新闻段落，或上传 .txt（支持 UTF-8 / GBK）</p>
               </div>
             </div>
             <div class="step">
-              <span class="step-no">2</span>
               <div>
                 <b>自动抽取</b>
                 <p>分句 → 实体识别 → 触发词与句式模板匹配</p>
               </div>
             </div>
             <div class="step">
-              <span class="step-no">3</span>
               <div>
                 <b>查看结果</b>
                 <p>实体高亮、三元组表格、关系图谱、统计洞察</p>
@@ -255,7 +264,7 @@
     </main>
 
     <footer class="footer">
-      FastAPI + SQLite 后端 · Vue 3 + Element Plus 前端 · 规则式中文 NLP 引擎（jieba 分词 + 词典 + 19 类关系模板）
+      <a href="/" class="footer-home">← 返回首页</a>
     </footer>
 
     <HistoryDrawer v-model="historyOpen" @load="onLoadRecord" />
@@ -281,6 +290,23 @@ import TripleTable from './components/TripleTable.vue'
 import RelationGraph from './components/RelationGraph.vue'
 import StatsOverview from './components/StatsOverview.vue'
 import HistoryDrawer from './components/HistoryDrawer.vue'
+import LandingPage from './components/LandingPage.vue'
+
+/**
+ * 站点只有三个入口：/ 是落地页，/app 是工作台，其余路径是品牌 404。
+ * 后端 SPA catch-all 会把任意路径回落到 index.html，所以直接用 pathname 判断即可。
+ * 兼容旧链接：/#entities 这类锚点仍然直达工作台对应页签。
+ */
+function resolvePage() {
+  const p = location.pathname.replace(/\/+$/, '') || '/'
+  if (p === '/' || p === '/index.html') {
+    return /^#(entities|triples|graph|stats)$/.test(location.hash) ? 'app' : 'landing'
+  }
+  if (p === '/app' || p.startsWith('/app/')) return 'app'
+  return 'missing'
+}
+const page = ref(resolvePage())
+function onPopstate() { page.value = resolvePage() }
 
 const SPLIT_KEY = 're.splitPref'
 
@@ -295,8 +321,29 @@ const stats = ref({})
 const historyOpen = ref(false)
 const activeRecordId = ref(null)
 const graphRef = ref(null)
-const relationsDirty = ref(false)
-const savingRelations = ref(false)
+
+/* ---------- 动效编排 ----------
+   抽取完成是一次性、有因果的事件：结果容器入场与朱红扫光同时启动，
+   容器内部（表格行 / 句子行 / 下拉项）一律不 stagger，切页签也不重播入场。
+   resultVersion 只在拿到新结果时递增；重跑时 key 变化让扫光元素重建即重播，
+   不叠加、不残留 timer，能扛住连续点击「开始抽取」。 */
+const resultVersion = ref(0)
+const segmentedRef = ref(null)
+const indicatorStyle = ref({ transform: 'translateX(0px) scaleX(0)' })
+const indicatorReady = ref(false)
+
+function updateIndicator() {
+  const el = segmentedRef.value?.querySelector('.seg-item.is-active')
+  if (!el) {
+    indicatorReady.value = false
+    return
+  }
+  const x = el.offsetLeft + 8
+  const w = Math.max(24, el.offsetWidth - 16)
+  // 基准宽 100px，宽度差用 scaleX 表达：整条指示条只动 transform，不触发重排
+  indicatorStyle.value = { transform: `translateX(${x}px) scaleX(${w / 100})` }
+  indicatorReady.value = true
+}
 
 /* 【创新点 2】结果就绪后左栏收窄，把宽度让给正文 */
 const compact = ref(false)
@@ -393,13 +440,13 @@ async function refreshStats() {
 }
 
 function applyResult(payload, recordId = null) {
+  resultVersion.value += 1
   result.value = payload
   activeRecordId.value = recordId
   entityFilter.value = null
   link.value = null
-  relationsDirty.value = false
-  savingRelations.value = false
   refreshStats()
+  nextTick(updateIndicator)
 }
 
 /**
@@ -431,53 +478,8 @@ async function runExtract({ save = true } = {}) {
   }
 }
 
-/** 保存当前结果快照（含未保存的人工校正），而不是重新跑一遍抽取。 */
-async function saveCurrent() {
-  if (!result.value) return
-  loading.value = true
-  try {
-    const res = await api.saveSnapshot(result.value, title.value, 'text')
-    activeRecordId.value = res.record_id
-    relationsDirty.value = false
-    await refreshStats()
-    liveMessage.value = `已存入历史 #${res.record_id}`
-    ElMessage.success(`已存入历史 #${res.record_id}`)
-  } catch (err) {
-    ElMessage.error(err.message)
-  } finally {
-    loading.value = false
-  }
-}
-
-function onRelationsChange(relations) {
-  if (!result.value) return
-  result.value.relations = relations
-  result.value.stats = { ...(result.value.stats || {}), relation_count: relations.length }
-  const counts = {}
-  for (const r of relations) counts[r.relation] = (counts[r.relation] || 0) + 1
-  result.value.relation_type_counts = counts
-  relationsDirty.value = true
-}
-
-async function saveCorrections() {
-  if (!activeRecordId.value) {
-    ElMessage.warning('请先点击上方「存入历史」')
-    return
-  }
-  if (!result.value) return
-  savingRelations.value = true
-  try {
-    const record = await api.saveRelations(activeRecordId.value, result.value.relations || [])
-    onRelationsChange(record.relations || [])
-    relationsDirty.value = false
-    await refreshStats()
-    liveMessage.value = `校正已保存，共 ${record.relation_count} 条三元组`
-    ElMessage.success(`校正已保存（${record.relation_count} 条）`)
-  } catch (err) {
-    ElMessage.error(err.message)
-  } finally {
-    savingRelations.value = false
-  }
+function saveCurrent() {
+  runExtract({ save: true })
 }
 
 const EXPORT_MIME = {
@@ -540,8 +542,6 @@ function onClear() {
   entityFilter.value = null
   link.value = null
   loadError.value = ''
-  relationsDirty.value = false
-  savingRelations.value = false
 }
 
 function onLoadRecord(record) {
@@ -595,6 +595,9 @@ watch(result, (value) => {
   if (splitPref.value !== 'full') compact.value = true
 })
 
+/* 页签切换、结果刷新、数量角标变化后，指示条按真实 DOM 位置对齐 */
+watch([tab, result], () => nextTick(updateIndicator))
+
 function onGlobalKeydown(event) {
   const mod = event.metaKey || event.ctrlKey
   if (!mod || event.key.toLowerCase() !== 'e') return
@@ -609,9 +612,13 @@ function onNarrowChange(event) {
 }
 
 onMounted(async () => {
+  window.addEventListener('popstate', onPopstate)
+  // 首页与 404 不触碰业务接口：后端没启动时也不该在落地页弹错误
+  if (page.value !== 'app') return
   const hashTab = tabFromHash()
   if (hashTab) tab.value = hashTab
   window.addEventListener('keydown', onGlobalKeydown)
+  window.addEventListener('resize', updateIndicator)
 
   narrowMq = window.matchMedia('(max-width: 1120px)')
   isNarrow.value = narrowMq.matches
@@ -638,12 +645,52 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('popstate', onPopstate)
   window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('resize', updateIndicator)
   narrowMq?.removeEventListener('change', onNarrowChange)
 })
 </script>
 
 <style scoped>
+/* ---------- 站点级：品牌回首页、页脚返回、404 ---------- */
+.appbar-brand {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--r);
+}
+.appbar-brand:hover .appbar-name { color: var(--accent); }
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer-home { color: var(--muted); text-decoration: none; }
+.footer-home:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+
+.missing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  background: var(--brand-paper);
+  color: var(--brand-ink);
+}
+.missing-code { font-size: 96px; line-height: 1; font-weight: 700; letter-spacing: -0.05em; color: var(--brand-red); margin: 0; }
+.missing-title { font-size: 32px; line-height: 1.25; font-weight: 500; margin: 0; letter-spacing: 0; }
+.missing-note { font-size: 16px; line-height: 24px; color: var(--brand-ink-2); margin: 0; }
+.missing-links { display: flex; gap: 24px; margin-top: 24px; }
+.missing-links a { font-size: 14px; font-weight: 600; color: var(--brand-red); text-underline-offset: 4px; }
+.missing-links a:hover { text-decoration: underline; }
+
 .head-right {
   display: flex;
   align-items: center;
@@ -656,7 +703,7 @@ onBeforeUnmount(() => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 12px 14px 14px;
+  padding: 12px 16px 16px;
   overflow: hidden;
 }
 
@@ -666,11 +713,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
+  padding: 8px 16px;
   font-size: 12px;
   color: var(--danger);
-  background: #fdf6f6;
-  border-bottom: 1px solid #f3dddd;
+  background: var(--brand-red-soft);
 }
 
 .error-strip span {
@@ -680,14 +726,14 @@ onBeforeUnmount(() => {
 
 .error-retry {
   height: 24px;
-  padding: 0 9px;
-  font-size: 11.5px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .strip-btn {
   height: 24px;
-  padding: 0 9px;
-  font-size: 11.5px;
+  padding: 0 12px;
+  font-size: 12px;
   background: #fff;
 }
 
@@ -695,7 +741,7 @@ onBeforeUnmount(() => {
 .compact-panel {
   align-self: start;
   gap: 0;
-  padding: 12px 13px 13px;
+  padding: 12px 16px 16px;
   overflow: auto;
 }
 
@@ -703,12 +749,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
 .cp-label {
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.8px;
   text-transform: uppercase;
   color: var(--muted);
@@ -725,7 +771,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: var(--r-xs);
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-color) var(--ease), color var(--dur-color) var(--ease);
 }
 
 .cp-toggle:hover {
@@ -734,7 +780,7 @@ onBeforeUnmount(() => {
 }
 
 .cp-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   line-height: 1.5;
   color: var(--ink);
@@ -748,7 +794,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  margin: 10px 0 12px;
+  margin: 12px 0 12px;
   background: var(--line);
   border-radius: var(--r-sm);
   overflow: hidden;
@@ -758,19 +804,19 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 6px;
-  padding: 6px 9px;
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--surface-2);
 }
 
 .cp-meta dt {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .cp-meta dd {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
@@ -779,12 +825,12 @@ onBeforeUnmount(() => {
 .cp-edit {
   width: 100%;
   justify-content: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .cp-saved {
   margin: 4px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
   color: var(--muted);
 }
@@ -799,7 +845,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 28px 32px 40px;
+  padding: 32px 32px 40px;
 }
 
 .hero-art {
@@ -810,7 +856,7 @@ onBeforeUnmount(() => {
 
 .hero h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--ink);
   letter-spacing: 0.2px;
@@ -819,8 +865,8 @@ onBeforeUnmount(() => {
 .hero-sub {
   margin: 8px 0 0;
   max-width: 540px;
-  font-size: 12.5px;
-  line-height: 1.85;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -832,7 +878,7 @@ onBeforeUnmount(() => {
 .hero-steps {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
+  gap: 12px;
   margin-top: 26px;
   width: 100%;
   max-width: 660px;
@@ -840,39 +886,23 @@ onBeforeUnmount(() => {
 
 .step {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   text-align: left;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--surface-2);
-}
-
-.step-no {
-  flex: none;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--r-xs);
-  background: var(--surface);
-  border: 1px solid var(--line-strong);
-  color: var(--ink-2);
-  font-size: 11px;
-  font-weight: 600;
-  display: grid;
-  place-items: center;
-  font-variant-numeric: tabular-nums;
+  padding: 12px 16px;
+  border-radius: var(--r);
+  background: var(--tone-1);
 }
 
 .step b {
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--ink);
 }
 
 .step p {
-  margin: 3px 0 0;
-  font-size: 11.5px;
-  line-height: 1.65;
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--muted);
 }
 
@@ -887,7 +917,7 @@ onBeforeUnmount(() => {
     flex-wrap: wrap;
   }
   .hero {
-    padding: 24px 18px 32px;
+    padding: 24px 16px 32px;
   }
 }
 </style>
