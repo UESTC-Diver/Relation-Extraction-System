@@ -218,7 +218,7 @@ defineExpose({ refresh })
   padding: 3px 6px 3px 4px;
   border-bottom: 1px solid var(--line);
   border-radius: var(--r-sm);
-  transition: background 0.12s ease;
+  transition: background var(--dur-press) var(--ease);
 }
 
 .hd-item:hover {
@@ -254,7 +254,7 @@ defineExpose({ refresh })
   font-size: 15px;
   line-height: 1;
   color: var(--faint);
-  transition: color 0.12s ease, transform 0.12s ease;
+  transition: color var(--dur-press) var(--ease), transform var(--dur-press) var(--ease);
 }
 
 .hd-item:hover .hd-chevron,
@@ -317,14 +317,14 @@ defineExpose({ refresh })
   border: 1px solid transparent;
   border-radius: var(--r-xs);
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+  transition: color var(--dur-press) var(--ease), background var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease);
 }
 
 .hd-del:hover,
 .hd-del:focus-visible {
   color: var(--danger);
-  background: #fdf6f6;
-  border-color: #f3dddd;
+  background: var(--brand-red-soft);
+  border-color: #e2c4be;
 }
 
 .hd-footer {

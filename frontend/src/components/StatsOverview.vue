@@ -303,7 +303,7 @@ function countBySentence(idx) {
 .bar-fill {
   height: 100%;
   border-radius: 999px;
-  transition: width 0.45s ease;
+  transition: width var(--dur-move) var(--ease);
 }
 
 .bar-num {
@@ -404,7 +404,7 @@ function countBySentence(idx) {
   color: var(--ink-2);
   text-align: left;
   cursor: pointer;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
 }
 
 .sentence-row:hover {
@@ -440,8 +440,8 @@ function countBySentence(idx) {
   padding: 0 5px;
   font-size: 10.5px;
   line-height: 16px;
-  color: #1d3fb8;
-  background: #eef2ff;
+  color: #8f2a23;
+  background: #f7e9e7;
   border-radius: var(--r-xs);
   font-variant-numeric: tabular-nums;
 }

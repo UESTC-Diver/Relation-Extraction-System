@@ -572,7 +572,7 @@ function exportCsv() {
   cursor: pointer;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
 }
 
 .conf-item:hover {
@@ -583,7 +583,7 @@ function exportCsv() {
   background: var(--surface);
   color: var(--ink);
   font-weight: 500;
-  box-shadow: 0 1px 2px rgba(16, 18, 22, 0.1);
+  box-shadow: 0 1px 2px rgba(32, 30, 25, 0.1);
 }
 
 /* 图谱下钻带过来的实体筛选 */
@@ -595,16 +595,16 @@ function exportCsv() {
   padding: 0 8px;
   font-family: inherit;
   font-size: 11.5px;
-  color: #1d3fb8;
-  background: #eef2ff;
-  border: 1px solid #c7d2f8;
+  color: #8f2a23;
+  background: #f7e9e7;
+  border: 1px solid #e4aca7;
   border-radius: var(--r-sm);
   cursor: pointer;
   white-space: nowrap;
 }
 
 .filter-chip:hover {
-  background: #e3e9ff;
+  background: #eec8c4;
 }
 
 .tb-right {
@@ -711,7 +711,7 @@ function exportCsv() {
   border-radius: var(--r-xs);
   font-size: 11px;
   color: var(--muted);
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
 }
 
 .table-wrap :deep(.el-table__expand-icon:hover) {
@@ -826,13 +826,13 @@ function exportCsv() {
   border: 1px solid var(--line-strong);
   border-radius: var(--r-xs);
   cursor: pointer;
-  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
 }
 
 .locate-btn:hover {
-  background: #eef2ff;
-  border-color: #c7d2f8;
-  color: #1d3fb8;
+  background: #f7e9e7;
+  border-color: #e4aca7;
+  color: #8f2a23;
 }
 
 /* ---------- 展开区 ---------- */

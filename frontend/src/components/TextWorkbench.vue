@@ -246,13 +246,13 @@ function submit() {
   border: 1px solid transparent;
   border-radius: var(--r-xs);
   cursor: pointer;
-  transition: color 0.14s ease, background 0.14s ease, border-color 0.14s ease;
+  transition: color var(--dur-press) var(--ease), background var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease);
 }
 
 .wb-clear:hover:not(:disabled) {
   color: var(--danger);
-  background: #fdf6f6;
-  border-color: #f3dddd;
+  background: var(--brand-red-soft);
+  border-color: #e2c4be;
 }
 
 .wb-clear:disabled {
@@ -293,7 +293,7 @@ function submit() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
 }
 
 .sample-chip:hover {
@@ -448,5 +448,16 @@ function submit() {
   font-size: 11px;
   line-height: 1.75;
   color: var(--muted);
+}
+
+/* 触摸目标：移动端把高频小控件提到 44px，桌面密集布局保持原样。
+   时长与曲线仍由 :root 的 --dur-* / --ease 统一提供。 */
+@media (max-width: 720px) {
+  .wb-clear { min-height: 44px; padding: 0 8px; }
+  .sample-chip { min-height: 44px; padding: 8px 12px; }
+  .wb-upload { min-height: 44px; }
+  /* 控件变高后头部要保住标题不折行：隐藏次要提示、标题单行 */
+  .wb-head .panel-title { white-space: nowrap; }
+  .wb-head .panel-title small { display: none; }
 }
 </style>

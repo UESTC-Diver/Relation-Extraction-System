@@ -373,7 +373,7 @@ onBeforeUnmount(() => {
   line-height: 1;
   color: var(--ink-2);
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  transition: background var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease), opacity var(--dur-press) var(--ease);
 }
 
 .legend-chip:hover:not(:disabled) {
@@ -456,7 +456,7 @@ onBeforeUnmount(() => {
   line-height: 1.95;
   color: var(--ink-2);
   letter-spacing: 0.2px;
-  transition: background 0.18s ease, border-color 0.18s ease;
+  transition: background var(--dur-swap) var(--ease), border-color var(--dur-swap) var(--ease);
 }
 
 .sent:hover {
@@ -464,8 +464,21 @@ onBeforeUnmount(() => {
 }
 
 .sent.is-focus {
-  background: #f4f7ff;
+  background: #faf1ee;
   border-left-color: var(--accent);
+}
+/* 证据定位的完成反馈，与首页 lpDraw / 工作台扫光共用同一条曲线与朱色 */
+.sent.is-focus::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 0;
+  bottom: 2px;
+  height: 2px;
+  background: var(--brand-red);
+  transform-origin: left;
+  animation: appRule var(--dur-color) var(--ease) both;
+  pointer-events: none;
 }
 
 .plain {
@@ -491,7 +504,7 @@ onBeforeUnmount(() => {
   box-shadow: inset 0 -2px 0 var(--c-line);
   cursor: pointer;
   white-space: pre-wrap;
-  transition: background 0.14s ease, box-shadow 0.14s ease;
+  transition: background var(--dur-press) var(--ease), box-shadow var(--dur-press) var(--ease);
 }
 
 .ent:hover {
@@ -517,7 +530,7 @@ onBeforeUnmount(() => {
   background: var(--c);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-press) var(--ease);
   z-index: 10;
 }
 
@@ -553,13 +566,13 @@ onBeforeUnmount(() => {
   vertical-align: baseline;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+  transition: background var(--dur-press) var(--ease), border-color var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
 }
 
 .sent-badge:hover {
-  background: #eef2ff;
-  border-color: #c7d2f8;
-  color: #1d3fb8;
+  background: #f7e9e7;
+  border-color: #e4aca7;
+  color: #8f2a23;
 }
 
 /* ---------- 实体清单 ---------- */
@@ -614,7 +627,7 @@ onBeforeUnmount(() => {
   color: var(--ink);
   cursor: pointer;
   text-align: left;
-  transition: background 0.12s ease;
+  transition: background var(--dur-press) var(--ease);
 }
 
 .entity-row:hover {

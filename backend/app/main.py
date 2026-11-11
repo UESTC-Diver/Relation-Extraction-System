@@ -71,11 +71,15 @@ def root():
 
 
 if FRONTEND_DIST.exists():
+    DIST_ROOT = FRONTEND_DIST.resolve()
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str):
-        candidate = FRONTEND_DIST / full_path
-        if candidate.is_file():
-            return FileResponse(candidate)
+        # full_path 来自 URL，可能带 .. 或 %2f 编码的穿越片段。先把路径解析成
+        # 绝对路径，再确认它仍在 dist 目录内；否则一律回落到 SPA 入口，
+        # 避免把 backend 源码、README 或 SQLite 数据库当静态文件发出去。
+        target = (FRONTEND_DIST / full_path).resolve()
+        if target.is_file() and target.is_relative_to(DIST_ROOT):
+            return FileResponse(target)
         return FileResponse(FRONTEND_DIST / "index.html")
