@@ -2,9 +2,11 @@
  * 结果导出工具。
  *
  * 三种格式各自的用途：
- * - CSV  : 丢进 Excel 看，或导入 Neo4j / Gephi 做图分析（带 BOM 防中文乱码）
- * - JSON : 程序消费，保留实体、原文与全部统计字段
- * - MD   : 直接粘进报告 / 作业文档，含统计表、实体表、三元组表
+ * - CSV     : 丢进 Excel 看，或导入 Neo4j / Gephi 做图分析（带 BOM 防中文乱码）
+ * - JSON    : 程序消费，保留实体、原文与全部统计字段
+ * - MD      : 直接粘进报告 / 作业文档，含统计表、实体表、三元组表
+ * - GraphML : 标准图交换格式，Gephi / yEd / NetworkX 直接打开
+ * - Cypher  : MERGE 语句，粘进 Neo4j Browser 即可建图
  */
 
 const BOM = '\ufeff'
@@ -201,5 +203,119 @@ export function buildMarkdown(result, meta) {
   return {
     filename: safeFilename(`${meta.title}-分析报告`, 'md'),
     content: lines.join('\n'),
+  }
+}
+
+/** GraphML / Cypher 共用：按规范化名 + 类型合并同义实体，与图谱视图一致。 */
+function graphNodes(result) {
+  const nodes = new Map()
+  const keyOf = (name, type) => `${type}::${name}`
+  const add = (raw, canonical, type) => {
+    const name = String(canonical || raw || '').trim()
+    if (!name) return null
+    const key = keyOf(name, type || 'UNKNOWN')
+    if (!nodes.has(key)) nodes.set(key, { id: `n${nodes.size}`, name, type: type || 'UNKNOWN' })
+    return key
+  }
+  const edges = []
+  for (const r of result.relations || []) {
+    const from = add(r.head, r.head_canonical, r.head_type)
+    const to = add(r.tail, r.tail_canonical, r.tail_type)
+    if (!from || !to || from === to) continue
+    edges.push({ from, to, relation: r })
+  }
+  return { nodes: [...nodes.values()], edges }
+}
+
+function xmlEscape(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+export function buildGraphml(result, meta) {
+  const graph = graphNodes(result)
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
+    '  <key id="d0" for="node" attr.name="label" attr.type="string"/>',
+    '  <key id="d1" for="node" attr.name="type" attr.type="string"/>',
+    '  <key id="d2" for="edge" attr.name="relation" attr.type="string"/>',
+    '  <key id="d3" for="edge" attr.name="label" attr.type="string"/>',
+    '  <key id="d4" for="edge" attr.name="confidence" attr.type="double"/>',
+    '  <key id="d5" for="edge" attr.name="evidence" attr.type="string"/>',
+    '  <graph id="G" edgedefault="directed">',
+  ]
+  for (const n of graph.nodes) {
+    lines.push(`    <node id="${n.id}">`)
+    lines.push(`      <data key="d0">${xmlEscape(n.name)}</data>`)
+    lines.push(`      <data key="d1">${xmlEscape(n.type)}</data>`)
+    lines.push('    </node>')
+  }
+  graph.edges.forEach((e, i) => {
+    const r = e.relation
+    lines.push(`    <edge id="e${i}" source="${e.from}" target="${e.to}">`)
+    lines.push(`      <data key="d2">${xmlEscape(r.relation)}</data>`)
+    lines.push(`      <data key="d3">${xmlEscape(r.relation_label || r.relation)}</data>`)
+    lines.push(`      <data key="d4">${Number(r.confidence ?? 0).toFixed(2)}</data>`)
+    lines.push(`      <data key="d5">${xmlEscape(r.evidence)}</data>`)
+    lines.push('    </edge>')
+  })
+  lines.push('  </graph>', '</graphml>')
+  return {
+    filename: safeFilename(`${meta.title}-关系图谱`, 'graphml'),
+    content: lines.join('\n') + '\n',
+  }
+}
+
+function cypherString(value) {
+  return `'${String(value == null ? '' : value)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r?\n/g, ' ')}'`
+}
+
+function cypherLabel(type) {
+  const safe = String(type || 'ENTITY').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+  return /^[A-Z]/.test(safe) ? safe : `N_${safe}`
+}
+
+function cypherRelation(key) {
+  const safe = String(key || 'RELATED').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+  return /^[A-Z]/.test(safe) ? safe : `R_${safe}`
+}
+
+export function buildCypher(result, meta) {
+  const graph = graphNodes(result)
+  const lines = [
+    `// 中文关系抽取系统 · ${meta.title}${meta.recordId ? ` · 记录 #${meta.recordId}` : ''}`,
+    `// 生成于 ${new Date().toLocaleString('zh-CN')}，共 ${graph.nodes.length} 个实体 / ${graph.edges.length} 条关系`,
+    '// 用 MERGE 保证重复导入不会产生重复节点',
+    '',
+  ]
+  for (const n of graph.nodes) {
+    lines.push(`MERGE (:${cypherLabel(n.type)} {name: ${cypherString(n.name)}});`)
+  }
+  lines.push('')
+  for (const e of graph.edges) {
+    const r = e.relation
+    lines.push(
+      `MATCH (h:${cypherLabel(e.relation.head_type)} {name: ${cypherString(e.relation.head_canonical || e.relation.head)}}), ` +
+        `(t:${cypherLabel(e.relation.tail_type)} {name: ${cypherString(e.relation.tail_canonical || e.relation.tail)}})`,
+    )
+    lines.push(
+      `MERGE (h)-[r:${cypherRelation(r.relation)}]->(t) ` +
+        `SET r.label = ${cypherString(r.relation_label || r.relation)}, ` +
+        `r.confidence = ${Number(r.confidence ?? 0).toFixed(2)}, ` +
+        `r.evidence = ${cypherString(r.evidence)}, ` +
+        `r.trigger = ${cypherString(r.trigger)};`,
+    )
+  }
+  return {
+    filename: safeFilename(`${meta.title}-neo4j`, 'cypher'),
+    content: lines.join('\n') + '\n',
   }
 }

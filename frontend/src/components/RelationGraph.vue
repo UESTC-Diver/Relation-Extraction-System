@@ -2,10 +2,10 @@
   <div class="graph">
     <div class="graph-toolbar">
       <div class="gt-left">
-        <el-radio-group v-model="layout" size="small" aria-label="图谱布局">
-          <el-radio-button value="force">力导向</el-radio-button>
-          <el-radio-button value="circular">环形</el-radio-button>
-        </el-radio-group>
+          <el-radio-group v-model="layout" size="small" aria-label="图谱布局" :disabled="isLarge">
+            <el-radio-button value="force">力导向</el-radio-button>
+            <el-radio-button value="circular">环形</el-radio-button>
+          </el-radio-group>
         <el-checkbox v-model="showEdgeLabel" size="small">关系标签</el-checkbox>
         <el-checkbox v-model="mergeNodes" size="small">合并同义实体</el-checkbox>
       </div>
@@ -15,6 +15,11 @@
         <el-button :icon="Refresh" @click="relayout">重新布局</el-button>
         <el-button :icon="Picture" @click="savePng">导出图片</el-button>
       </div>
+    </div>
+
+    <div v-if="isLarge" class="graph-degrade" role="status">
+      当前 {{ nodes.length }} 个节点：已自动切到环形布局，并关闭力导向动画与节点标签以保持流畅；
+      点节点仍可下钻到三元组。
     </div>
 
     <div class="graph-canvas-wrap">
@@ -46,7 +51,14 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+// 只注册用到的 graph 系列、tooltip 与 Canvas 渲染器；全量 echarts 会把
+// 所有图表类型与渲染器一起打进包里，而这里只用得到一张关系图。
+import * as echarts from 'echarts/core'
+import { GraphChart } from 'echarts/charts'
+import { TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([GraphChart, TooltipComponent, CanvasRenderer])
 import { ElMessage } from 'element-plus'
 import { Picture, Refresh } from '@element-plus/icons-vue'
 
@@ -59,6 +71,13 @@ const emit = defineEmits(['focus-entity'])
 
 const canvasRef = ref(null)
 const layout = ref('force')
+
+/* 大图降级：力导向在数百节点上会持续迭代、每帧重排，明显掉帧且标签必然重叠。
+   超过阈值强制环形布局 + 关闭入场动画 / 拖拽 / 节点标签，交互与下钻保持不变。 */
+const LARGE_GRAPH_THRESHOLD = 80
+const isLarge = computed(() => nodes.value.length > LARGE_GRAPH_THRESHOLD)
+const effectiveLayout = computed(() => (isLarge.value ? 'circular' : layout.value))
+
 // 默认不显示连线标签：多条关系指向同一对节点时标签必然互相压字，
 // 关系名交给悬停提示和三元组表格，勾选可随时打开
 const showEdgeLabel = ref(false)
@@ -159,7 +178,7 @@ function buildOption() {
     },
     tooltip: { formatter: `${n.name}<br/>类型：${typeLabel(n.type)}<br/>关联关系：${n.degree} 条` },
     label: {
-      show: true,
+      show: !isLarge.value,
       position: 'bottom',
       distance: 7,
       fontSize: 11.5,
@@ -200,7 +219,7 @@ function buildOption() {
 
   return {
     backgroundColor: 'transparent',
-    animationDuration: 480,
+    animationDuration: isLarge.value ? 0 : 480,
     tooltip: {
       confine: true,
       backgroundColor: 'rgba(32,30,25,0.94)',
@@ -211,12 +230,12 @@ function buildOption() {
     series: [
       {
         type: 'graph',
-        layout: layout.value,
+        layout: effectiveLayout.value,
         data: nodeData,
         links: edgeData,
         categories: categories.value,
         roam: true,
-        draggable: true,
+        draggable: !isLarge.value,
         scaleLimit: { min: 0.4, max: 3 },
         emphasis: {
           focus: 'adjacency',
@@ -234,7 +253,7 @@ function buildOption() {
         // 节点名互相挤开而不是直接隐藏 —— 藏掉名字比挤开更糟
         labelLayout: { hideOverlap: false, moveOverlap: 'shiftY' },
         force:
-          layout.value === 'force'
+          effectiveLayout.value === 'force'
             ? {
                 repulsion: 900,
                 edgeLength: [110, 175],
@@ -243,7 +262,7 @@ function buildOption() {
                 layoutAnimation: true,
               }
             : undefined,
-        circular: layout.value === 'circular' ? { rotateLabel: true } : undefined,
+        circular: effectiveLayout.value === 'circular' ? { rotateLabel: true } : undefined,
         lineStyle: { opacity: 0.55 },
       },
     ],
@@ -378,6 +397,17 @@ watch([layout, showEdgeLabel, mergeNodes], render)
   justify-content: space-between;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.graph-degrade {
+  flex: none;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--brand-red);
+  background: var(--brand-red-soft);
+  border: 1px solid #e2c4be;
+  border-radius: var(--r-sm);
 }
 
 .gt-left,

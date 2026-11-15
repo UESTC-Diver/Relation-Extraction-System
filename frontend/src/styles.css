@@ -123,57 +123,8 @@
   /* ---------- 阴影：只留给浮层 ---------- */
   --shadow-pop: 0 10px 28px -12px rgba(32, 30, 25, 0.22), 0 2px 6px rgba(32, 30, 25, 0.06);
 
-  /* ============================================================
-     Element Plus 皮肤：primary 全系列映射到朱红，组件不再自带蓝
-     ============================================================ */
-  --el-font-family: var(--font-sans);
-  --el-font-size-base: 14px;
-  --el-font-size-small: 12px;
-  --el-font-size-extra-small: 12px;
-
-  --el-color-primary: var(--brand-red);
-  --el-color-primary-light-3: #c25a53;
-  --el-color-primary-light-5: #d3837d;
-  --el-color-primary-light-7: #e4aca7;
-  --el-color-primary-light-8: #eec8c4;
-  --el-color-primary-light-9: #f7e9e7;
-  --el-color-primary-dark-2: #862720;
-
-  --el-color-success: #15803d;
-  --el-color-warning: #b45309;
-  --el-color-danger: var(--brand-red);
-  --el-color-error: var(--brand-red);
-  --el-color-info: var(--brand-muted);
-
-  --el-text-color-primary: var(--brand-ink);
-  --el-text-color-regular: var(--brand-ink-2);
-  --el-text-color-secondary: var(--brand-muted);
-  --el-text-color-placeholder: var(--brand-muted);
-  --el-text-color-disabled: #a9a396;
-
-  --el-border-color: var(--tone-3);
-  --el-border-color-light: var(--tone-2);
-  --el-border-color-lighter: var(--tone-2);
-  --el-border-color-extra-light: var(--tone-1);
-  --el-border-color-dark: var(--tone-4);
-  --el-border-color-darker: #c4bba6;
-
-  --el-fill-color: var(--tone-2);
-  --el-fill-color-light: var(--tone-1);
-  --el-fill-color-lighter: var(--tone-1);
-  --el-fill-color-blank: var(--brand-surface);
-  --el-bg-color: var(--brand-surface);
-  --el-bg-color-overlay: var(--brand-surface);
-  --el-bg-color-page: var(--bg);
-  --el-disabled-bg-color: var(--tone-1);
-
-  --el-border-radius-base: 4px;
-  --el-border-radius-small: 4px;
-  --el-border-radius-round: 999px;
-
-  --el-box-shadow: 0 10px 28px -12px rgba(32, 30, 25, 0.22);
-  --el-box-shadow-light: 0 2px 8px rgba(32, 30, 25, 0.06);
-  --el-box-shadow-lighter: 0 1px 3px rgba(32, 30, 25, 0.06);
+  /* Element Plus 皮肤变量已移到 element-overrides.css：
+     组件库 CSS 现在只在工作台动态加载，覆盖必须排在它之后才不会被默认蓝盖掉。 */
 }
 
 * {
@@ -640,124 +591,7 @@ body.lp-active #app { height: auto; min-height: 100%; }
   letter-spacing: 0.2px;
 }
 
-/* ============================================================
-   Element Plus 细节校正
-   ============================================================ */
-
-/* 按钮 */
-.el-button {
-  font-weight: 500;
-  --el-button-hover-text-color: var(--ink);
-  transition: background-color var(--dur-color) var(--ease),
-    color var(--dur-color) var(--ease), border-color var(--dur-color) var(--ease);
-}
-
-.el-button--primary {
-  --el-button-bg-color: var(--brand-red);
-  --el-button-border-color: var(--brand-red);
-  --el-button-text-color: #fffdf6;
-  --el-button-hover-bg-color: #8f2a23;
-  --el-button-hover-border-color: #8f2a23;
-  --el-button-hover-text-color: #fffdf6;
-  --el-button-active-bg-color: #75221c;
-  --el-button-active-border-color: #75221c;
-}
-
-.el-button--default {
-  --el-button-bg-color: var(--tone-2);
-  --el-button-border-color: var(--tone-2);
-  --el-button-text-color: var(--ink-2);
-  --el-button-hover-bg-color: var(--tone-3);
-  --el-button-hover-border-color: var(--tone-3);
-  --el-button-hover-text-color: var(--ink);
-}
-
-.el-button.is-link {
-  font-weight: 500;
-  color: var(--ink-2);
-}
-
-.el-button.is-link:hover {
-  color: var(--accent);
-}
-
-.el-button--danger.is-link {
-  color: var(--muted);
-}
-
-.el-button--danger.is-link:hover {
-  color: var(--danger);
-}
-
-/* 输入框：灰底无边线，聚焦时白底墨线 */
-.el-input__wrapper,
-.el-textarea__inner {
-  background: var(--tone-2);
-  box-shadow: none;
-  border-radius: var(--r);
-  transition: background var(--dur-color) var(--ease), box-shadow var(--dur-color) var(--ease);
-}
-
-.el-input__wrapper:hover,
-.el-textarea__inner:hover {
-  background: var(--tone-3);
-  box-shadow: none;
-}
-
-.el-input__wrapper.is-focus,
-.el-textarea__inner:focus {
-  background: var(--tone-0);
-  box-shadow: 0 0 0 1px var(--brand-red) inset;
-}
-
-/* 表格：无发丝线，斑马纹与 hover 承担分隔 */
-.el-table {
-  --el-table-border-color: transparent;
-  --el-table-header-bg-color: var(--tone-1);
-  --el-table-header-text-color: var(--muted);
-  --el-table-row-hover-bg-color: var(--tone-1);
-  font-size: 14px;
-}
-
-.el-table th.el-table__cell {
-  font-weight: 500;
-}
-
-/* 抽屉 */
-.el-drawer__header {
-  margin-bottom: 0;
-  padding: var(--sp-5) var(--sp-6) var(--sp-4);
-  color: var(--ink);
-}
-
-.el-drawer__body {
-  padding: var(--sp-2) var(--sp-6) var(--sp-5);
-}
-
-/* 浮层 */
-.el-popper,
-.el-select__popper,
-.el-popover {
-  box-shadow: var(--shadow-pop) !important;
-  border-radius: var(--r) !important;
-}
-
-/* 标签 */
-.el-tag {
-  border-radius: var(--r);
-  font-weight: 500;
-}
-
-/* 空状态 */
-.el-empty__description p {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* 加载遮罩 */
-.el-loading-mask {
-  background: rgba(255, 253, 246, 0.72);
-}
+/* Element Plus 细节校正已移到 element-overrides.css，随组件库一起动态加载。 */
 
 /* ============================================================
    响应式
@@ -812,6 +646,40 @@ body.lp-active #app { height: auto; min-height: 100%; }
 /* 结果面板：一个容器一次入场。tab 切换不重播，只有新结果（key 变化）才重播。 */
 .result-panel { position: relative; }
 .result-body { animation: appResultIn var(--dur-move) var(--ease) both; }
+/* 重抽期间旧结果仍在，但明确标成「正在被替换」，避免误读成新结果 */
+.result-body.is-stale { opacity: 0.62; pointer-events: none; transition: opacity var(--dur-color) var(--ease); }
+
+/* 首次抽取没有旧结果可展示时用骨架占位，空白面板容易被当成卡死 */
+.result-skeleton {
+  display: grid;
+  gap: 14px;
+  padding: 32px;
+  min-height: 260px;
+  align-content: start;
+}
+.sk-line {
+  height: 12px;
+  border-radius: 4px;
+  background: var(--brand-paper-2);
+  animation: appSkeleton 1.4s var(--ease-loop) infinite;
+}
+.sk-title { height: 24px; width: 38%; }
+.sk-short { width: 64%; }
+.sk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 12px; }
+.sk-card {
+  height: 96px;
+  border-radius: 4px;
+  background: var(--brand-paper-2);
+  animation: appSkeleton 1.4s var(--ease-loop) infinite;
+}
+.sk-card:nth-child(2) { animation-delay: 120ms; }
+.sk-card:nth-child(3) { animation-delay: 240ms; }
+.sk-hint { margin: 10px 0 0; font-size: 14px; color: var(--brand-muted); }
+@keyframes appSkeleton { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .sk-line, .sk-card { animation: none; opacity: 0.7; }
+  .result-body.is-stale { transition: none; }
+}
 .result-scan {
   position: absolute;
   left: 0; right: 0; top: 0;

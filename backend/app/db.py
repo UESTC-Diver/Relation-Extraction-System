@@ -67,6 +67,27 @@ CREATE TABLE IF NOT EXISTS custom_terms (
     type       TEXT    NOT NULL,
     created_at TEXT    NOT NULL
 );
+
+-- 用户自定义关系触发词：给 19 类内置规则追加领域说法，不用改 Python 重新发版
+CREATE TABLE IF NOT EXISTS custom_rules (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    relation_key TEXT    NOT NULL,
+    trigger      TEXT    NOT NULL,
+    created_at   TEXT    NOT NULL,
+    UNIQUE (relation_key, trigger)
+);
+
+-- 全库聚合的增量计数：避免 /api/stats 每次对 records 做全表 SUM / AVG。
+-- 单行表，启动时从 records 重算一次保证与历史库一致，之后由写路径增量维护。
+CREATE TABLE IF NOT EXISTS counters (
+    id        INTEGER PRIMARY KEY CHECK (id = 1),
+    records   INTEGER NOT NULL DEFAULT 0,
+    chars     INTEGER NOT NULL DEFAULT 0,
+    entities  INTEGER NOT NULL DEFAULT 0,
+    relations INTEGER NOT NULL DEFAULT 0,
+    sum_ms    REAL    NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO counters (id) VALUES (1);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
@@ -79,25 +100,162 @@ def _now() -> str:
     return datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
-@contextmanager
-def connect() -> Iterator[sqlite3.Connection]:
+import threading
+import time
+
+# 连接按线程复用：FastAPI 的同步端点跑在线程池里，每个工作线程留一条连接，
+# 避免每请求 open/close 一遍并重设 PRAGMA（journal_mode 还是个库级写操作）。
+_local = threading.local()
+_wal_ready: set[str] = set()
+_wal_lock = threading.Lock()
+
+_OVERVIEW_TTL = 5.0
+_overview_cache: tuple[str, float, dict] | None = None
+
+
+def _invalidate_overview() -> None:
+    global _overview_cache
+    _overview_cache = None
+
+
+# --------------------------------------------------------------------------- #
+# 全文检索（FTS5 trigram）
+#
+# 默认 unicode61 分词器把连续汉字当成一个词，"搜狗公司" 搜不到 "搜狗公司宣布"；
+# trigram 按 3 字符滑窗建索引，天然支持中文子串，且可用 MATCH 走索引而不是
+# LIKE '%kw%' 全表扫描。SQLite 未编入 FTS5 或版本 < 3.34 时自动退回 LIKE。
+# --------------------------------------------------------------------------- #
+_FTS_READY = False
+
+_FTS_SCHEMA = """
+CREATE VIRTUAL TABLE IF NOT EXISTS records_fts
+    USING fts5(title, text, content='records', content_rowid='id', tokenize='trigram');
+
+CREATE TRIGGER IF NOT EXISTS records_fts_ai AFTER INSERT ON records BEGIN
+    INSERT INTO records_fts(rowid, title, text) VALUES (new.id, new.title, new.text);
+END;
+CREATE TRIGGER IF NOT EXISTS records_fts_ad AFTER DELETE ON records BEGIN
+    INSERT INTO records_fts(records_fts, rowid, title, text)
+        VALUES ('delete', old.id, old.title, old.text);
+END;
+CREATE TRIGGER IF NOT EXISTS records_fts_au AFTER UPDATE OF title, text ON records BEGIN
+    INSERT INTO records_fts(records_fts, rowid, title, text)
+        VALUES ('delete', old.id, old.title, old.text);
+    INSERT INTO records_fts(rowid, title, text) VALUES (new.id, new.title, new.text);
+END;
+"""
+
+
+def _setup_fts(conn: sqlite3.Connection) -> None:
+    """建外部内容全文索引并回填历史数据；不支持的环境静默降级。"""
+    global _FTS_READY
+    if sqlite3.sqlite_version_info < (3, 34, 0):
+        return
+    try:
+        conn.executescript(_FTS_SCHEMA)
+        # 每次启动对齐一次：外部内容表不自行感知建表前已有的行
+        conn.execute("INSERT INTO records_fts(records_fts) VALUES('rebuild')")
+        _FTS_READY = True
+    except sqlite3.Error:
+        _FTS_READY = False
+
+
+def _fts_where(keyword: str) -> tuple[str, list[str]] | None:
+    """把用户输入转成安全的 FTS MATCH 短语；不适合走索引时返回 None。"""
+    if not _FTS_READY or len(keyword) < 3:
+        # trigram 至少 3 个字符才生成词元，短词用 LIKE 反而更快也更准
+        return None
+    if any(ch in keyword for ch in '"*^:(){}') or keyword.strip() != keyword:
+        return None
+    phrase = '"' + keyword.replace('"', '""') + '"'
+    return "WHERE id IN (SELECT rowid FROM records_fts WHERE records_fts MATCH ?)", [phrase]
+
+
+# --------------------------------------------------------------------------- #
+# 增量统计计数
+# --------------------------------------------------------------------------- #
+
+def _rebuild_counters(conn: sqlite3.Connection) -> None:
+    """启动时按 records 真值重算，兼容旧库与手工改库。"""
+    row = conn.execute(
+        """SELECT COUNT(*) AS records,
+                  COALESCE(SUM(char_count), 0) AS chars,
+                  COALESCE(SUM(entity_count), 0) AS entities,
+                  COALESCE(SUM(relation_count), 0) AS relations,
+                  COALESCE(SUM(elapsed_ms), 0) AS sum_ms
+           FROM records"""
+    ).fetchone()
+    conn.execute(
+        """UPDATE counters SET records = ?, chars = ?, entities = ?,
+                               relations = ?, sum_ms = ? WHERE id = 1""",
+        (row["records"], row["chars"], row["entities"], row["relations"], row["sum_ms"]),
+    )
+
+
+def _bump_counters(
+    conn: sqlite3.Connection,
+    records: int = 0,
+    chars: int = 0,
+    entities: int = 0,
+    relations: int = 0,
+    sum_ms: float = 0.0,
+) -> None:
+    conn.execute(
+        """UPDATE counters SET records = records + ?, chars = chars + ?,
+                               entities = entities + ?, relations = relations + ?,
+                               sum_ms = sum_ms + ? WHERE id = 1""",
+        (records, chars, entities, relations, sum_ms),
+    )
+
+
+def _record_totals(conn: sqlite3.Connection, record_id: int) -> sqlite3.Row | None:
+    return conn.execute(
+        """SELECT char_count, entity_count, relation_count, elapsed_ms
+           FROM records WHERE id = ?""",
+        (record_id,),
+    ).fetchone()
+
+
+def _connection() -> sqlite3.Connection:
+    path = str(DB_PATH)
+    conn = getattr(_local, "conn", None)
+    if conn is not None and getattr(_local, "path", None) == path:
+        return conn
+    if conn is not None:
+        # APP_DB_PATH 换了（测试切临时库）：旧连接必须丢掉，否则会串库
+        conn.close()
+        _invalidate_overview()
+
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row
+    # journal_mode 写在数据库文件头里，同一个库设一次就够；
+    # 另外三条是连接级设置，每条新连接都要设。
+    with _wal_lock:
+        if path not in _wal_ready:
+            conn.execute("PRAGMA journal_mode = WAL")
+            _wal_ready.add(path)
     conn.execute("PRAGMA foreign_keys = ON")
-    # WAL：读写不互斥，避免一个写请求把全库锁死
-    conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
-    # 并发写入时最多等待 5 秒，而不是立刻抛 database is locked
     conn.execute("PRAGMA busy_timeout = 5000")
+    _local.conn = conn
+    _local.path = path
+    return conn
+
+
+@contextmanager
+def connect() -> Iterator[sqlite3.Connection]:
+    conn = _connection()
+    changes_before = conn.total_changes
     try:
         yield conn
         conn.commit()
     except Exception:
         conn.rollback()
         raise
-    finally:
-        conn.close()
+    # 有写入就让统计缓存失效；纯读（列表 / 详情 / 统计）保留缓存
+    if conn.total_changes != changes_before:
+        _invalidate_overview()
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -137,6 +295,8 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         _migrate(conn)
         conn.executescript(INDEX_AFTER_MIGRATE)
+        _setup_fts(conn)
+        _rebuild_counters(conn)
 
 
 def _insert_relations(
@@ -212,6 +372,14 @@ def save_record(
         record_id = int(cur.lastrowid)
         if store_relations:
             _insert_relations(conn, record_id, relations)
+        _bump_counters(
+            conn,
+            records=1,
+            chars=stats.get("char_count", 0),
+            entities=stats.get("entity_count", 0),
+            relations=len(relations),
+            sum_ms=float(stats.get("elapsed_ms", 0.0)),
+        )
     return record_id
 
 
@@ -233,14 +401,32 @@ def _record_row(row: sqlite3.Row) -> dict[str, Any]:
 def list_records(limit: int = 20, offset: int = 0, keyword: str = "") -> dict[str, Any]:
     where, params = "", []
     if keyword:
-        where = "WHERE text LIKE ? OR title LIKE ?"
-        params = [f"%{keyword}%", f"%{keyword}%"]
+        # 优先走 trigram 全文索引；短词或不支持 FTS5 的环境退回 LIKE。
+        fts = _fts_where(keyword)
+        where, params = fts or ("WHERE text LIKE ? OR title LIKE ?", [f"%{keyword}%", f"%{keyword}%"])
     with connect() as conn:
-        total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
-        rows = conn.execute(
-            f"SELECT * FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?",
-            [*params, limit, offset],
-        ).fetchall()
+        try:
+            total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
+            # 只取列表要用的列：text 与 entities_json 可能各有上万字，
+            # SELECT * 会把它们白白读进内存再丢掉。
+            rows = conn.execute(
+                f"""SELECT id, title, substr(text, 1, 200) AS text, source,
+                           char_count, sentence_count, entity_count, relation_count,
+                           elapsed_ms, created_at
+                    FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+                [*params, limit, offset],
+            ).fetchall()
+        except sqlite3.Error:
+            # MATCH 语法意外报错时不能让搜索整个挂掉，退回最保守的 LIKE
+            where, params = "WHERE text LIKE ? OR title LIKE ?", [f"%{keyword}%", f"%{keyword}%"]
+            total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
+            rows = conn.execute(
+                f"""SELECT id, title, substr(text, 1, 200) AS text, source,
+                           char_count, sentence_count, entity_count, relation_count,
+                           elapsed_ms, created_at
+                    FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+                [*params, limit, offset],
+            ).fetchall()
     return {"total": total, "items": [_record_row(r) for r in rows]}
 
 
@@ -290,10 +476,11 @@ def replace_relations(
     """
     with connect() as conn:
         exists = conn.execute(
-            "SELECT 1 FROM records WHERE id = ?", (record_id,)
+            "SELECT relation_count FROM records WHERE id = ?", (record_id,)
         ).fetchone()
         if not exists:
             return False
+        previous = int(exists["relation_count"] or 0)
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         _insert_relations(conn, record_id, relations)
         if entities is None:
@@ -323,8 +510,18 @@ def replace_relations(
 
 def delete_record(record_id: int) -> bool:
     with connect() as conn:
+        totals = _record_totals(conn, record_id)
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         cur = conn.execute("DELETE FROM records WHERE id = ?", (record_id,))
+        if cur.rowcount > 0 and totals:
+            _bump_counters(
+                conn,
+                records=-1,
+                chars=-int(totals["char_count"] or 0),
+                entities=-int(totals["entity_count"] or 0),
+                relations=-int(totals["relation_count"] or 0),
+                sum_ms=-float(totals["elapsed_ms"] or 0.0),
+            )
     return cur.rowcount > 0
 
 
@@ -332,20 +529,32 @@ def clear_records() -> int:
     with connect() as conn:
         conn.execute("DELETE FROM relations")
         cur = conn.execute("DELETE FROM records")
+        conn.execute(
+            """UPDATE counters SET records = 0, chars = 0, entities = 0,
+                                   relations = 0, sum_ms = 0 WHERE id = 1"""
+        )
     return cur.rowcount
 
 
 def overview() -> dict[str, Any]:
+    """全库聚合：读多写少，做 5 秒短缓存；任何写操作由 connect() 主动失效。"""
+    global _overview_cache
+    key = str(DB_PATH)
+    now = time.monotonic()
+    if (
+        _overview_cache
+        and _overview_cache[0] == key
+        and now - _overview_cache[1] < _OVERVIEW_TTL
+    ):
+        return _overview_cache[2]
+
     with connect() as conn:
+        # 总量来自增量计数表，不再对 records 全表 SUM/AVG；
+        # 热门榜仍是按 relations 分组，但整段结果有 5 秒缓存。
         totals = conn.execute(
-            """
-            SELECT COUNT(*) AS records,
-                   COALESCE(SUM(char_count), 0) AS chars,
-                   COALESCE(SUM(entity_count), 0) AS entities,
-                   COALESCE(SUM(relation_count), 0) AS relations,
-                   COALESCE(AVG(elapsed_ms), 0) AS avg_ms
-            FROM records
-            """
+            """SELECT records, chars, entities, relations,
+                      CASE WHEN records > 0 THEN sum_ms / records ELSE 0 END AS avg_ms
+               FROM counters WHERE id = 1"""
         ).fetchone()
         top_relations = conn.execute(
             """
@@ -368,7 +577,7 @@ def overview() -> dict[str, Any]:
         recent = conn.execute(
             "SELECT id, title, relation_count, created_at FROM records ORDER BY id DESC LIMIT 5"
         ).fetchall()
-    return {
+    data = {
         "records": totals["records"],
         "chars": totals["chars"],
         "entities": totals["entities"],
@@ -378,6 +587,8 @@ def overview() -> dict[str, Any]:
         "top_entities": [dict(r) for r in top_entities],
         "recent": [dict(r) for r in recent],
     }
+    _overview_cache = (key, now, data)
+    return data
 
 
 # --------------------------------------------------------------------------- #
@@ -417,3 +628,123 @@ def clear_custom_terms() -> int:
     with connect() as conn:
         cur = conn.execute("DELETE FROM custom_terms")
     return cur.rowcount
+
+
+# --------------------------------------------------------------------------- #
+# 自定义关系触发词
+# --------------------------------------------------------------------------- #
+
+def list_custom_rules() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT id, relation_key, trigger, created_at
+               FROM custom_rules ORDER BY relation_key, id"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def custom_triggers_by_relation() -> dict[str, list[str]]:
+    """按关系 key 聚成 {key: [触发词...]}，供抽取流水线热更新索引。"""
+    grouped: dict[str, list[str]] = {}
+    for row in list_custom_rules():
+        grouped.setdefault(row["relation_key"], []).append(row["trigger"])
+    return grouped
+
+
+def add_custom_rule(relation_key: str, trigger: str) -> dict[str, Any]:
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO custom_rules (relation_key, trigger, created_at) VALUES (?, ?, ?)",
+            (relation_key, trigger, _now()),
+        )
+        row = conn.execute(
+            "SELECT id, relation_key, trigger, created_at FROM custom_rules WHERE relation_key = ? AND trigger = ?",
+            (relation_key, trigger),
+        ).fetchone()
+    data = dict(row)
+    data["duplicate"] = cur.rowcount == 0
+    return data
+
+
+def delete_custom_rule(rule_id: int) -> bool:
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM custom_rules WHERE id = ?", (rule_id,))
+    return cur.rowcount > 0
+
+
+def clear_custom_rules() -> int:
+    with connect() as conn:
+        cur = conn.execute("DELETE FROM custom_rules")
+    return cur.rowcount
+
+
+# --------------------------------------------------------------------------- #
+# 批量结果的跨文档聚合
+# --------------------------------------------------------------------------- #
+
+def aggregate_records(record_ids: list[int]) -> dict[str, Any]:
+    """对一组刚抽出的记录做跨文档统计：热门实体、热门关系、高频三元组。"""
+    ids = [int(i) for i in record_ids if i]
+    empty = {
+        "records": 0, "entities": 0, "relations": 0,
+        "top_entities": [], "top_relations": [], "top_pairs": [], "documents": [],
+    }
+    if not ids:
+        return empty
+    marks = ",".join("?" for _ in ids)
+    with connect() as conn:
+        totals = conn.execute(
+            f"""SELECT COUNT(*) AS records,
+                       COALESCE(SUM(entity_count), 0) AS entities,
+                       COALESCE(SUM(relation_count), 0) AS relations
+                FROM records WHERE id IN ({marks})""",
+            ids,
+        ).fetchone()
+        docs = conn.execute(
+            f"SELECT id, title, relation_count FROM records WHERE id IN ({marks}) ORDER BY id",
+            ids,
+        ).fetchall()
+        top_relations = conn.execute(
+            f"""SELECT relation, relation_label, COUNT(*) AS cnt FROM relations
+                WHERE record_id IN ({marks}) GROUP BY relation, relation_label
+                ORDER BY cnt DESC LIMIT 8""",
+            ids,
+        ).fetchall()
+        top_entities = conn.execute(
+            f"""SELECT name, type, COUNT(*) AS cnt FROM (
+                    SELECT COALESCE(NULLIF(head_canonical, ''), head) AS name,
+                           head_type AS type FROM relations WHERE record_id IN ({marks})
+                    UNION ALL
+                    SELECT COALESCE(NULLIF(tail_canonical, ''), tail) AS name,
+                           tail_type AS type FROM relations WHERE record_id IN ({marks})
+                ) GROUP BY name, type ORDER BY cnt DESC LIMIT 10""",
+            [*ids, *ids],
+        ).fetchall()
+        top_pairs = conn.execute(
+            f"""SELECT COALESCE(NULLIF(head_canonical, ''), head) AS head,
+                       relation_label,
+                       COALESCE(NULLIF(tail_canonical, ''), tail) AS tail,
+                       COUNT(*) AS cnt FROM relations WHERE record_id IN ({marks})
+                GROUP BY head, relation_label, tail ORDER BY cnt DESC LIMIT 8""",
+            ids,
+        ).fetchall()
+    return {
+        "records": totals["records"],
+        "entities": totals["entities"],
+        "relations": totals["relations"],
+        "top_relations": [dict(r) for r in top_relations],
+        "top_entities": [dict(r) for r in top_entities],
+        "top_pairs": [dict(r) for r in top_pairs],
+        "documents": [dict(r) for r in docs],
+    }
+
+
+def db_size_bytes() -> int:
+    try:
+        return DB_PATH.stat().st_size
+    except OSError:
+        return 0
+
+
+def fts_enabled() -> bool:
+    return _FTS_READY

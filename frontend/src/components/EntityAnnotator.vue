@@ -22,7 +22,7 @@
     <div class="annotator-main">
       <div ref="docRef" class="doc">
         <p
-          v-for="block in blocks"
+          v-for="block in visibleBlocks"
           :key="block.start"
           class="sent"
           :class="{ 'is-focus': focusIndex === block.index && block.index >= 0 }"
@@ -55,6 +55,12 @@
             @click="onSentenceClick(block)"
           >{{ block.relCount }} 条关系</button>
         </p>
+
+        <div v-if="hiddenCount" class="sent-more">
+          <button type="button" class="btn-more" @click="showMore">
+            继续显示后续 {{ Math.min(RENDER_BATCH, hiddenCount) }} 块（共 {{ blocks.length }} 块，已显示 {{ visibleBlocks.length }} 块）
+          </button>
+        </div>
 
         <el-empty v-if="!hasText" description="没有可展示的原文" :image-size="64" />
       </div>
@@ -250,6 +256,21 @@ const blocks = computed(() => {
   return out.filter((b) => b.segs.length)
 })
 
+/* ---------- 长文分批挂载 ----------
+   20000 字可能切出上百句、数千个实体按钮，一次性全挂会让首屏明显卡顿。
+   先渲染前 RENDER_BATCH 块，需要更多时手动续一批；外部要定位未挂载的句子时，
+   scrollTo 会按需逐批展开，保证证据链跳转仍然有效。 */
+const RENDER_BATCH = 40
+const visibleCount = ref(RENDER_BATCH)
+const visibleBlocks = computed(() => blocks.value.slice(0, visibleCount.value))
+const hiddenCount = computed(() => Math.max(0, blocks.value.length - visibleCount.value))
+
+function showMore() {
+  visibleCount.value = Math.min(blocks.value.length, visibleCount.value + RENDER_BATCH)
+}
+
+watch(() => props.result, () => { visibleCount.value = RENDER_BATCH })
+
 const uniqueEntities = computed(() => {
   const map = new Map()
   for (const e of props.result?.entities || []) {
@@ -281,8 +302,14 @@ const reducedMotion = () =>
   typeof window !== 'undefined' &&
   window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
-function scrollTo(selector) {
-  const el = docRef.value?.querySelector(selector)
+async function scrollTo(selector) {
+  let el = docRef.value?.querySelector(selector)
+  // 目标块还没挂载：逐批展开，每批后等 DOM 更新再找，直到命中或全部展开
+  while (!el && hiddenCount.value) {
+    showMore()
+    await nextTick()
+    el = docRef.value?.querySelector(selector)
+  }
   if (el) {
     el.scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'center' })
   }
@@ -342,6 +369,22 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* 分批续载控件：沿用纸墨朱，44px 触摸目标 */
+.sent-more { display: flex; justify-content: center; padding: 16px 0 24px; }
+.btn-more {
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid var(--brand-paper-2);
+  border-radius: 4px;
+  background: var(--brand-surface);
+  color: var(--brand-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color var(--dur-color) var(--ease), border-color var(--dur-color) var(--ease);
+}
+.btn-more:hover { color: var(--brand-red); border-color: var(--brand-red); }
+
 .annotator {
   display: flex;
   flex-direction: column;

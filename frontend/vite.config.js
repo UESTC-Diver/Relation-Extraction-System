@@ -14,6 +14,8 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    chunkSizeWarningLimit: 1600,
+    // 不再靠抬高阈值把体积警告藏起来；按路由与图表库自然分包后应低于该值。
+    // Element Plus 整套注册只在 /app 动态加载（见 main.js），首页不下载它。
+    chunkSizeWarningLimit: 600,
   },
 })

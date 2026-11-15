@@ -24,16 +24,23 @@ def _engines() -> tuple[EntityRecognizer, RelationExtractor]:
     return _recognizer, _extractor
 
 
-def analyze(text: str, custom_terms: list[dict] | None = None) -> dict:
+def analyze(
+    text: str,
+    custom_terms: list[dict] | None = None,
+    custom_triggers: dict[str, list[str]] | None = None,
+) -> dict:
     """对一段中文文本执行实体识别与关系抽取，返回可直接序列化的结果。
 
-    custom_terms 来自用户自定义词典，形式为 [{"text": ..., "type": ...}]。
+    custom_terms    —— 用户自定义词典，[{"text": ..., "type": ...}]
+    custom_triggers —— 用户自定义关系触发词，{关系 key: [触发词...]}
     """
     started = time.perf_counter()
     text = (text or "").strip()
     if not text:
         return _empty_result(text, 0.0)
 
+    # 自定义触发词按签名增量同步，同一套配置下是常数级空操作
+    apply_custom_triggers(custom_triggers)
     recognizer, extractor = _engines()
     sentences = split_sentences(text)
     entities = recognizer.recognize(text, sentences, custom_terms=custom_terms)
