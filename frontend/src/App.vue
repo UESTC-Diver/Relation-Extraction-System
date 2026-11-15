@@ -244,10 +244,10 @@
             :entity-filter="entityFilter"
             :sentences="result.sentences || []"
             :record-id="activeRecordId"
-            :dirty="dirty"
-            :saving="saving"
-            :can-undo="undoStack.length > 0"
-            :can-redo="redoStack.length > 0"
+            :dirty="relationsDirty"
+            :saving="savingRelations"
+            @update:relations="onRelationsChange"
+            @save="saveCorrections"
             @locate="onLocate"
             @clear-filter="entityFilter = null"
             @update:relations="onRelationsChange"
@@ -390,153 +390,8 @@ const stats = ref({})
 const historyOpen = ref(false)
 const activeRecordId = ref(null)
 const graphRef = ref(null)
-const batchOpen = ref(false)
-
-/* ---------- 人工校正闭环 ----------
-   表格编辑的是 editableRelations；savedRelations 是最近一次保存后的基线，
-   两者对比得出 dirty。undo / redo 存整份快照（单篇最多几十条，保留 50 步）。 */
-const editableRelations = ref([])
-const savedRelations = ref([])
-const undoStack = ref([])
-const redoStack = ref([])
-const saving = ref(false)
-
-const relationSignature = (list) =>
-  JSON.stringify(
-    (list || []).map((r) => [
-      r.id || '', r.head, r.head_type, r.relation, r.tail, r.tail_type,
-      r.evidence || '', r.trigger || '', r.confidence, r.sentence_index ?? 0,
-      r.rule_base || '',
-    ]),
-  )
-
-const dirty = computed(
-  () => relationSignature(editableRelations.value) !== relationSignature(savedRelations.value),
-)
-
-function syncResultRelations(next) {
-  if (!result.value) return
-  result.value = {
-    ...result.value,
-    relations: next,
-    stats: { ...result.value.stats, relation_count: next.length },
-  }
-}
-
-function onRelationsChange(next) {
-  undoStack.value.push(editableRelations.value.map((r) => ({ ...r })))
-  if (undoStack.value.length > 50) undoStack.value.shift()
-  redoStack.value = []
-  editableRelations.value = next
-  syncResultRelations(next)
-}
-
-function undo() {
-  if (!undoStack.value.length) return
-  redoStack.value.push(editableRelations.value.map((r) => ({ ...r })))
-  const previous = undoStack.value.pop()
-  editableRelations.value = previous
-  syncResultRelations(previous)
-  liveMessage.value = '已撤销上一步校正'
-}
-
-function redo() {
-  if (!redoStack.value.length) return
-  undoStack.value.push(editableRelations.value.map((r) => ({ ...r })))
-  const next = redoStack.value.pop()
-  editableRelations.value = next
-  syncResultRelations(next)
-  liveMessage.value = '已重做校正'
-}
-
-/** 与基线比较，给保存后的提示一个可核对的数字。 */
-function relationDiff(before, after) {
-  const key = (r) => `${r.head}|${r.head_type}|${r.relation}|${r.tail}|${r.tail_type}`
-  const b = new Set(before.map(key))
-  const a = new Set(after.map(key))
-  return {
-    added: after.filter((r) => !b.has(key(r))).length,
-    removed: before.filter((r) => !a.has(key(r))).length,
-  }
-}
-
-async function persistCorrections(forceNew = false) {
-  if (!result.value || saving.value) return
-  saving.value = true
-  try {
-    const relations = editableRelations.value.map((r) => ({ ...r }))
-    const diff = relationDiff(savedRelations.value, relations)
-    let recordId = forceNew ? null : activeRecordId.value
-    const payload = {
-      ...result.value,
-      relations,
-      stats: { ...result.value.stats, relation_count: relations.length },
-    }
-    if (recordId) {
-      await api.saveRelations(recordId, relations)
-    } else {
-      const res = await api.saveSnapshot(
-        payload,
-        forceNew && title.value ? `${title.value}（校正副本）` : title.value,
-      )
-      recordId = res.record_id
-      activeRecordId.value = recordId
-    }
-    savedRelations.value = relations.map((r) => ({ ...r }))
-    await refreshStats()
-    syncShareUrl()
-    const summary = `已保存：新增 ${diff.added} 条 · 删除 ${diff.removed} 条`
-    ElMessage.success(forceNew ? `已另存为记录 #${recordId}，${summary}` : `${summary} · 记录 #${recordId}`)
-    liveMessage.value = summary
-  } catch (err) {
-    ElMessage.error(`保存失败：${err.message}`)
-  } finally {
-    saving.value = false
-  }
-}
-
-function saveCorrections() {
-  return persistCorrections(false)
-}
-
-function saveAsSnapshot() {
-  return persistCorrections(true)
-}
-
-/* ---------- 可分享的结果深链 ----------
-   ?record=<id> 指向历史记录，?q=<实体> 带三元组筛选，页签仍用 #hash。
-   replaceState 一律构造完整 pathname + search + hash，避免切页签时把 query 抹掉。 */
-function syncShareUrl() {
-  if (page.value !== 'app') return
-  const url = new URL(location.href)
-  if (activeRecordId.value != null) url.searchParams.set('record', String(activeRecordId.value))
-  else url.searchParams.delete('record')
-  if (entityFilter.value?.name) url.searchParams.set('q', entityFilter.value.name)
-  else url.searchParams.delete('q')
-  history.replaceState(null, '', url.pathname + url.search + url.hash)
-}
-
-async function copyShareLink() {
-  syncShareUrl()
-  const link = location.href
-  try {
-    await navigator.clipboard.writeText(link)
-    ElMessage.success('链接已复制，打开即可复现当前结果')
-  } catch {
-    // 非安全上下文 / 权限受限时退回可手动复制的文本
-    const input = document.createElement('input')
-    input.value = link
-    input.style.position = 'fixed'
-    input.style.opacity = '0'
-    document.body.appendChild(input)
-    input.select()
-    const ok = document.execCommand?.('copy')
-    input.remove()
-    ElMessage[ok ? 'success' : 'info'](
-      ok ? '链接已复制，打开即可复现当前结果' : `请手动复制地址栏链接：${link}`,
-    )
-  }
-}
+const relationsDirty = ref(false)
+const savingRelations = ref(false)
 
 /* ---------- 动效编排 ----------
    抽取完成是一次性、有因果的事件：结果容器入场与朱红扫光同时启动，
@@ -636,7 +491,7 @@ function toggleCompact(next) {
 /* ---------- 联动 ---------- */
 /** 定位到某个句子的证据：切到实体标注并高亮该句 */
 function onLocate(sentenceIndex) {
-  if (sentenceIndex === null || sentenceIndex === undefined) return
+  if (sentenceIndex === null || sentenceIndex === undefined || sentenceIndex < 0) return
   tab.value = 'entities'
   link.value = { kind: 'sentence', value: sentenceIndex, ts: Date.now() }
   liveMessage.value = `已定位到第 ${sentenceIndex + 1} 句`
@@ -658,17 +513,91 @@ async function refreshStats() {
   }
 }
 
-/* ---------- 在途抽取的竞态控制 ----------
-   连续重抽、上传与清空都可能让旧请求晚于新请求返回。每条请求领一个序号，
-   只有序号仍是最新的一条才允许写结果；新请求发起时直接 abort 上一条。 */
-let extractSeq = 0
-let extractController = null
+function entityMetaOf(type) {
+  return (schema.value.entity_types || []).find((t) => t.key === type) || {}
+}
 
-function cancelPendingExtract() {
-  extractSeq += 1
-  if (extractController) {
-    extractController.abort()
-    extractController = null
+function entityKeyOf(type, canonical, text) {
+  return `${type}:${canonical || text}`
+}
+
+function findOccurrences(text, value) {
+  if (!text || !value) return []
+  const spans = []
+  let from = 0
+  while (from <= text.length - value.length) {
+    const idx = text.indexOf(value, from)
+    if (idx < 0) break
+    spans.push([idx, idx + value.length])
+    from = idx + value.length
+  }
+  return spans
+}
+
+function sentenceIndexAt(start) {
+  const sentences = result.value?.sentences || []
+  const hit = sentences.find(
+    (s) => Number.isInteger(s.start) && Number.isInteger(s.end) && s.start <= start && start < s.end,
+  )
+  return hit ? hit.index : -1
+}
+
+/**
+ * 人工校正可能引用自动识别没覆盖到的实体。把这些实体补进实体清单，
+ * 并重算实体数量/类型分布，避免三元组、标注页和统计各说各话。
+ */
+function syncEntities(relations) {
+  if (!result.value) return
+  const data = result.value
+  const text = data.text || ''
+  const base = (data.entities || []).filter((e) => e.source !== 'manual')
+  const occupied = base
+    .filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end))
+    .map((e) => [e.start, e.end])
+  const known = new Set(base.map((e) => entityKeyOf(e.type, e.canonical, e.text)))
+  const added = []
+  let seq = 0
+
+  const consider = (value, type, canonical) => {
+    if (!value) return
+    const key = entityKeyOf(type, canonical, value)
+    if (known.has(key)) return
+    known.add(key)
+    const meta = entityMetaOf(type)
+    for (const [start, end] of findOccurrences(text, value)) {
+      if (occupied.some(([s, e]) => start < e && s < end)) continue
+      occupied.push([start, end])
+      added.push({
+        id: `manual-e${Date.now()}-${(seq += 1)}`,
+        text: value,
+        canonical: canonical || value,
+        type,
+        type_label: meta.label || type,
+        color: meta.color || '#64748b',
+        start,
+        end,
+        sentence_index: sentenceIndexAt(start),
+        source: 'manual',
+        confidence: 1,
+      })
+    }
+  }
+
+  for (const r of relations) {
+    consider(r.head, r.head_type, r.head_canonical)
+    consider(r.tail, r.tail_type, r.tail_canonical)
+  }
+
+  const entities = [...base, ...added].sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
+  data.entities = entities
+  const counts = {}
+  for (const t of schema.value.entity_types || []) counts[t.key] = 0
+  for (const e of entities) counts[e.type] = (counts[e.type] || 0) + 1
+  data.entity_type_counts = counts
+  data.stats = {
+    ...(data.stats || {}),
+    entity_count: entities.length,
+    unique_entity_count: new Set(entities.map((e) => e.text)).size,
   }
 }
 
@@ -678,11 +607,9 @@ function applyResult(payload, recordId = null) {
   activeRecordId.value = recordId
   entityFilter.value = null
   link.value = null
-  // 每次换结果都重置校正栈：编辑历史不能跨文档沿用
-  editableRelations.value = (payload.relations || []).map((r) => ({ ...r }))
-  savedRelations.value = editableRelations.value.map((r) => ({ ...r }))
-  undoStack.value = []
-  redoStack.value = []
+  relationsDirty.value = false
+  savingRelations.value = false
+  syncEntities(payload.relations || [])
   refreshStats()
   syncShareUrl()
   nextTick(updateIndicator)
@@ -727,8 +654,58 @@ async function runExtract({ save = true } = {}) {
   }
 }
 
-function saveCurrent() {
-  runExtract({ save: true })
+/** 保存当前结果快照（含未保存的人工校正），而不是重新跑一遍抽取。 */
+async function saveCurrent() {
+  if (!result.value) return
+  loading.value = true
+  try {
+    const res = await api.saveSnapshot(result.value, title.value, 'text')
+    activeRecordId.value = res.record_id
+    relationsDirty.value = false
+    await refreshStats()
+    liveMessage.value = `已存入历史 #${res.record_id}`
+    ElMessage.success(`已存入历史 #${res.record_id}`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+function onRelationsChange(relations) {
+  if (!result.value) return
+  result.value.relations = relations
+  result.value.stats = { ...(result.value.stats || {}), relation_count: relations.length }
+  const counts = {}
+  for (const r of relations) counts[r.relation] = (counts[r.relation] || 0) + 1
+  result.value.relation_type_counts = counts
+  syncEntities(relations)
+  relationsDirty.value = true
+}
+
+async function saveCorrections() {
+  if (!activeRecordId.value) {
+    ElMessage.warning('请先点击上方「存入历史」')
+    return
+  }
+  if (!result.value) return
+  savingRelations.value = true
+  try {
+    const record = await api.saveRelations(
+      activeRecordId.value,
+      result.value.relations || [],
+      result.value.entities || [],
+    )
+    onRelationsChange(record.relations || [])
+    relationsDirty.value = false
+    await refreshStats()
+    liveMessage.value = `校正已保存，共 ${record.relation_count} 条三元组`
+    ElMessage.success(`校正已保存（${record.relation_count} 条）`)
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    savingRelations.value = false
+  }
 }
 
 const EXPORT_MIME = {
@@ -810,23 +787,8 @@ function onClear() {
   entityFilter.value = null
   link.value = null
   loadError.value = ''
-  editableRelations.value = []
-  savedRelations.value = []
-  undoStack.value = []
-  redoStack.value = []
-  syncShareUrl()
-}
-
-async function onBatchLoad(recordId) {
-  if (!recordId) return
-  try {
-    const record = await api.getRecord(recordId)
-    onLoadRecord(record)
-    tab.value = 'triples'
-    ElMessage.success(`已载入批量结果 #${recordId}`)
-  } catch (err) {
-    ElMessage.error(`载入失败：${err.message}`)
-  }
+  relationsDirty.value = false
+  savingRelations.value = false
 }
 
 function onLoadRecord(record) {
@@ -846,6 +808,7 @@ function onLoadRecord(record) {
     if (!sentenceMap.has(r.sentence_index)) sentenceMap.set(r.sentence_index, r.evidence || '')
   }
   const sentences = [...sentenceMap.entries()]
+    .filter(([index]) => Number.isInteger(index) && index >= 0)
     .sort((a, b) => a[0] - b[0])
     .map(([index, textValue]) => ({ index, text: textValue }))
 

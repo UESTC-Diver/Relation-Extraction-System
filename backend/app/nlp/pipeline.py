@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 
 from .entity import Entity, EntityRecognizer
-from .lexicon import ENTITY_TYPE_ORDER, ENTITY_TYPES, RELATION_MAP, apply_custom_triggers
+from .lexicon import ENTITY_TYPE_ORDER, ENTITY_TYPES
 from .relation import RelationExtractor
 from .tokenizer import split_sentences, warmup
 

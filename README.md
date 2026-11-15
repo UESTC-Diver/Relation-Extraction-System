@@ -31,12 +31,10 @@
 | **关系抽取** | 输出 `<头实体, 关系, 尾实体>` 三元组，覆盖收购、投资、任职于、总部位于、创立、合作、签署协议等 **19 类关系**，每条结果附带置信度、触发词、证据句与所用规则；内置**轻量指代消解**（"该工厂 / 双方 / 后者"自动回指到真实实体）与**主语链继承**（"……并与 B 签署……"继承上一分句主语），并在三元组表格中标注"指代消解 / 主语链"规则来源 |
 | **实体归一** | 机构名递归剥离"有限公司 / 集团 / 控股"等后缀（腾讯控股有限公司 → 腾讯），同一实体的多种写法在图谱、清单与统计中合并为一个节点，清单上以角标提示已合并 |
 | **结果可视化** | ① 三元组表格（按关系类型/置信度过滤、关键词搜索、展开行查看完整证据句）② ECharts 力导向/环形关系图（可拖拽、缩放、合并同义实体）③ 统计洞察（实体/关系分布、句级关系数、全库累计） |
-| **结果导出** | 右上角统一导出菜单：三元组 **CSV**（带 BOM，Excel 打开不乱码，表头含规范化名）、完整 **JSON**、**Markdown** 分析报告、**GraphML**（Gephi / yEd / NetworkX 直接打开）、**Neo4j Cypher**（MERGE 语句，含证据与置信度属性）、关系图谱 **PNG** |
-| **历史记录** | 页面初始化时的示例抽取仅作预览、**不写库**（避免刷新产生重复记录）；主动抽取或点击「存入历史」才入库，支持 FTS5 `trigram` 中文子串检索（短词自动回退 LIKE）、分页、载入复现、单条删除与一键清空 |
-| **人工校正** | 三元组表格支持新增、修改、删除、**撤销 / 重做**（按钮与 `Ctrl/⌘ + Z`、`+ Shift + Z`）；点「保存校正」写回历史，保存后提示新增 / 删除条数，`rule_base` 区分自动与手工，人工行标注「人工」；预览态可直接「保存为新记录」，已有记录也能「另存副本」不覆盖原件 |
-| **批量抽取** | 一次提交最多 20 篇：多文件上传（编码逐个自动识别）或按空行分隔的多段文本；逐篇显示实体数 / 关系数 / 耗时，单篇失败不打断整批，并给出**跨文档聚合**（高频实体、高频关系、高频三元组），任一已入库结果可一键载入工作台 |
-| **结果深链** | `/app?record=12#triples` 直接复现历史记录，`?q=实体名` 带三元组筛选；点「复制分享链接」把当前结果、页签与筛选一起写进 URL |
-| **领域配置** | 界面可增删**自定义实体词条**（人物 / 机构 / 地名 / 产品等）与**自定义关系触发词**（给 19 类内置规则追加领域说法），两者都是保存后下一次抽取立即生效，无需改代码或重启；句式模板仍由代码维护 |
+| **人工校正** | 三元组表格支持新增 / 编辑 / 删除；人工确认的条目置信度记为 100% 并标记「人工」；校正结果通过 `PUT /api/records/{id}/relations` 保存回历史，表格、图谱、统计与导出同步更新 |
+| **自定义词典** | 左侧「词典」弹窗可添加内置词典未覆盖的机构 / 人名 / 地名，抽取时优先识别；词条持久化到 SQLite，重启后仍然生效 |
+| **结果导出** | 右上角统一导出菜单：三元组 **CSV**（带 BOM，Excel 打开不乱码，表头含规范化名，可导入 Neo4j）、完整 **JSON**、**Markdown** 分析报告（含统计表 / 实体表 / 证据句 / 原文）、关系图谱 **PNG** |
+| **历史记录** | 页面初始化时的示例抽取仅作预览、**不写库**（避免刷新产生重复记录）；「存入历史」保存当前结果快照（含人工校正），支持按标题/正文检索、分页、载入复现、单条删除与一键清空 |
 | **效果评测** | `eval/` 下提供 10 段人工标注金标准集与 P/R/F1 评测脚本，输出整体与分类型指标及漏抽/误抽明细 |
 | **交互体验** | 内置 4 条中文新闻示例（一键切换并自动抽取）、空状态引导、字数计数、错误提示、响应式布局（≤1120px 单列）；结果与证据双向联动（表格→原文定位、图谱→三元组下钻、统计→原文定位）；结果就绪后左栏自动收窄为摘要卡；图谱超过 80 个节点自动降级为环形布局并关闭力导向动画与标签 |
 
@@ -116,48 +114,46 @@
 软件工程作业（修改框架版）/
 ├─ backend/
 │  ├─ app/
-│  │  ├─ main.py              # FastAPI 入口：SPA 托管、GZip、CORS 与可选写保护
-│  │  ├─ db.py                # SQLite 建表、FTS5 全文索引、增量计数、批量聚合
+│  │  ├─ main.py              # FastAPI 应用入口（含 SPA 静态托管）
+│  │  ├─ db.py                # SQLite 建表与 records/relations/custom_terms 读写
 │  │  ├─ samples.py           # 4 条内置中文新闻示例
 │  │  ├─ nlp/
-│  │  │  ├─ lexicon.py        # 实体词典、19 类关系规则、句式模板、触发词热更新
-│  │  │  ├─ tokenizer.py      # 分句 + jieba 分词（注入自定义词典）
-│  │  │  ├─ entity.py         # 实体识别（词典/后缀/上下文/词性 四通道 + 重叠消解）
+│  │  │  ├─ lexicon.py        # 实体词典、19 类关系规则、句式模板、实体类型目录
+│  │  │  ├─ tokenizer.py      # 分句 + jieba 分词（注入内置领域词典）
+│  │  │  ├─ entity.py         # 实体识别（自定义词条/词典/后缀/上下文/词性 + 重叠消解）
 │  │  │  ├─ relation.py       # 关系抽取（句式模板优先、触发词扫描兜底、去重与置信度）
-│  │  │  └─ pipeline.py       # analyze(text, custom_terms, custom_triggers) 流水线出口
+│  │  │  └─ pipeline.py       # analyze(text, custom_terms) 统一流水线出口
 │  │  └─ routers/
-│  │     ├─ extract.py        # /api/extract、/extract/file、/extract/batch*、/api/health
-│  │     ├─ meta.py           # /api/records（含人工校正）、/api/stats、/api/samples、/api/schema
-│  │     ├─ dictionary.py     # /api/dictionary 自定义实体词条增删查
-│  │     └─ rules.py          # /api/rules 自定义关系触发词增删查 + 内置规则目录
+│  │     ├─ extract.py        # /api/extract、/api/extract/file、/api/health
+│  │     ├─ meta.py           # /api/records（含快照/校正）、/api/stats、/api/schema
+│  │     └─ dictionary.py     # /api/dictionary 自定义实体词典 CRUD
 │  ├─ data/app.db             # SQLite 数据文件（首次运行自动创建，WAL 模式）
 │  ├─ devtools/check.py       # 离线自检脚本：对内置示例跑抽取并打印结果
 │  ├─ eval/
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # P/R/F1 评测脚本（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（28 条，临时库隔离）
+│  ├─ tests/                  # pytest API 回归测试（25 条，临时库隔离）
 │  │  ├─ conftest.py          # APP_DB_PATH 指向 tmp_path，不碰真实 app.db
 │  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越（16 条）
 │  │  └─ test_features.py     # FTS5/增量计数/批量/自定义规则/健康信息（12 条）
 │  ├─ pytest.ini              # testpaths 与 pythonpath
 │  ├─ requirements.txt
-│  └─ requirements-dev.txt    # pytest + httpx
+│  └─ requirements-dev.txt    # pytest + httpx + ruff
 ├─ frontend/
 │  ├─ src/
-│  │  ├─ App.vue              # 站点分流 + 工作台业务（校正栈、深链、导出、批量入口）
-│  │  ├─ main.js / styles.css # 按入口挂载、全站设计系统（仅 /app 加载组件库）
-│  │  ├─ element-setup.js     # Element Plus 按需注册 + 中文 locale（工作台动态 chunk）
-│  │  ├─ element-overrides.css# 组件库皮肤覆盖，排在组件库 CSS 之后加载
-│  │  ├─ api/client.js        # Axios 封装（抽取/批量/记录/规则/统计/示例/元数据）
-│  │  ├─ utils/export.js      # 导出构建：CSV / JSON / MD / GraphML / Cypher
+│  │  ├─ App.vue              # 站点入口分流（/ 首页、/app 工作台、404）+ 工作台全部业务
+│  │  ├─ main.js / styles.css # Element Plus 注册、全局设计系统
+│  │  ├─ api/client.js        # Axios 封装（抽取/记录/校正/词典/统计/示例）
+│  │  ├─ utils/export.js      # 导出构建：CSV / JSON / Markdown + 文件名清洗
 │  │  ├─ data/landing-demo.json # 首页演示数据：pipeline 真实抽取结果与关系目录
 │  │  └─ components/
 │  │     ├─ LandingPage.vue    # 产品首页：接口契约面板、价值段、能力切换器、CTA
-│  │     ├─ TextWorkbench.vue   # 文本输入、示例、上传、清空、识别能力面板
-│  │     ├─ EntityAnnotator.vue # 正文实体高亮 + 长文本分批渲染
-│  │     ├─ TripleTable.vue     # 三元组表格（过滤/校正/撤销重做/导出 CSV）
-│  │     ├─ RelationGraph.vue   # ECharts 关系图（大图自动降级环形布局）
+│  │     ├─ TextWorkbench.vue   # 文本输入、示例、上传、自定义词典入口
+│  │     ├─ DictionaryDialog.vue# 自定义实体词条的增删查
+│  │     ├─ EntityAnnotator.vue # 正文实体高亮 + 类型筛选 + 实体清单
+│  │     ├─ TripleTable.vue     # 三元组表格（过滤/校正/定位/导出 CSV）
+│  │     ├─ RelationGraph.vue   # ECharts 关系图（布局切换/标签/合并/导出）
 │  │     ├─ StatsOverview.vue   # 指标卡、类型分布、句级统计、全库累计
 │  │     ├─ HistoryDrawer.vue   # 历史记录抽屉（检索/载入/删除/清空）
 │  │     ├─ DictionaryDialog.vue# 实体词典与关系触发词两个配置页
@@ -346,9 +342,14 @@ python -m pytest -q        # 28 passed
 | `GET` | `/api/records` | 历史记录分页，参数 `limit / offset / keyword`；≥3 字走 FTS5 trigram 索引，短词回退 LIKE |
 | `POST` | `/api/records` | 把当前结果另存为快照（三元组会先做类型与长度校验） |
 | `GET` | `/api/records/{id}` | 单条记录详情（含实体与三元组） |
-| `PUT` | `/api/records/{id}/relations` | 用人工校正后的三元组整体替换，来源标记为 `manual` |
+| `POST` | `/api/records` | 保存当前结果快照，请求体 `{title, source, result}` |
+| `PUT` | `/api/records/{id}/relations` | 用人工校正后的三元组整体替换，并回写记录计数 |
 | `DELETE` | `/api/records/{id}` | 删除单条记录 |
 | `DELETE` | `/api/records` | 清空全部记录 |
+| `GET` | `/api/dictionary` | 自定义实体词典列表 |
+| `POST` | `/api/dictionary` | 新增词条，请求体 `{text, type}` |
+| `DELETE` | `/api/dictionary/{id}` | 删除单个词条 |
+| `DELETE` | `/api/dictionary` | 清空自定义词典 |
 | `GET` | `/api/stats` | 全库统计：记录数、实体数、三元组数、平均耗时、热门关系、活跃实体 |
 | `GET` | `/api/samples` | 内置示例新闻 |
 | `GET` | `/api/schema` | 实体类型与关系类型目录（含颜色，供前端渲染） |
@@ -476,14 +477,13 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 
 ## 十、已知限制
 
-1. **规则驱动，泛化有限。** 未训练序列标注模型，遇到词典与模板完全未覆盖的领域实体（如小众初创公司、生僻人名）会漏识别；不在 19 类关系内的语义会被直接丢弃而不是误报。
+1. **规则驱动，泛化有限。** 未训练序列标注模型，遇到词典与模板完全未覆盖的领域实体（如小众初创公司、生僻人名）会漏识别；不在 19 类关系内的语义会被直接丢弃而不是误报。可通过「自定义词典」补充领域实体，但仍需人工维护。
 2. **是轻量指代，不是完整共指消解。** 关系抽取主体仍在单句内；只处理「该工厂 / 双方 / 后者 / 前者」等有限模式与「并 / 且 / 也」主语链，不解析「他 / 其」的多层嵌套，也不支持跨段话题切换与跨句因果、时序关系。
 3. **长文本上限 20000 字**（超出返回 413），上传文件上限 2MB（超出也返回 413）。
 4. 长度超过 13 字的超长机构名可能被截断（后缀构词窗口限制）。
 5. **单句内实体过多时**，窗口截断可能导致少数远距离关系漏抽。
-6. **人工校正只覆盖三元组**：可在表格中改、删、新增关系并写回历史，但实体识别结果与证据句偏移仍是自动抽取产物，不能手改。预览态也能直接「保存为新记录」，已有记录可「另存副本」不覆盖原件。
-7. **单机单用户设计**：SQLite 单文件、历史记录对所有访问者共享。对外部署可用 `APP_ALLOWED_ORIGINS` 与 `APP_API_TOKEN` 做来源收敛与写保护，但不提供多用户账号与权限体系。
-8. **规则可配置的范围**：实体词条与关系触发词都能在界面增删、立即生效；`SPECIAL_PATTERNS` 句式模板与 19 类关系目录仍需改 `lexicon.py` 后重新构建。中文全文检索用 trigram，≥3 字走索引、1–2 字走 `LIKE` 全表扫描，记录量极大时短词检索会变慢。
+6. **人工校正范围有限**：可增删改三元组；新增关系会尝试按原文补实体并重算实体统计，但实体文本若未在原文出现，只会进入三元组/图谱，不会进入标注页。
+7. **单机单用户设计**：SQLite 单文件、无鉴权，历史记录与自定义词典对所有访问者共享，不适合多用户并发部署。
 
 ---
 
@@ -493,6 +493,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典；临时补词走界面的「自定义实体词典」。
 - **样式分层**：`styles.css` 是首页与工作台共用的基础层；Element Plus 的组件库 CSS 与皮肤覆盖放在 `element-setup.js` / `element-overrides.css`，只在 `/app` 动态加载。新增 `--el-*` 变量或组件级覆盖时请写进 `element-overrides.css`（选择器保留 `html` 前缀），否则首页会白下载组件样式、工作台会被默认蓝盖掉。
 - 修改后建议执行 `python devtools/check.py` 做回归，再 `npm run build` 刷新前端产物。
+- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`；CI（`.github/workflows/ci.yml`）也会自动执行这三步并检查构建。
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。

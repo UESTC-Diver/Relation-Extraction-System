@@ -464,8 +464,16 @@ def get_record(record_id: int) -> dict[str, Any] | None:
     return data
 
 
-def replace_relations(record_id: int, relations: list[dict[str, Any]]) -> bool:
-    """用人工校正后的三元组整体替换某条历史记录的关系，并同步计数。"""
+def replace_relations(
+    record_id: int,
+    relations: list[dict[str, Any]],
+    entities: list[dict[str, Any]] | None = None,
+) -> bool:
+    """用人工校正后的三元组整体替换某条历史记录的关系，并同步计数。
+
+    entities 不为 None 时一并更新实体快照，保证记录列表里的实体数与
+    PUT 之后的实际实体清单一致。
+    """
     with connect() as conn:
         exists = conn.execute(
             "SELECT relation_count FROM records WHERE id = ?", (record_id,)
@@ -475,11 +483,28 @@ def replace_relations(record_id: int, relations: list[dict[str, Any]]) -> bool:
         previous = int(exists["relation_count"] or 0)
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         _insert_relations(conn, record_id, relations)
-        conn.execute(
-            "UPDATE records SET relation_count = ? WHERE id = ?",
-            (len(relations), record_id),
-        )
-        _bump_counters(conn, relations=len(relations) - previous)
+        if entities is None:
+            conn.execute(
+                "UPDATE records SET relation_count = ? WHERE id = ?",
+                (len(relations), record_id),
+            )
+        else:
+            counts: dict[str, int] = {}
+            for e in entities:
+                etype = e.get("type")
+                if etype:
+                    counts[etype] = counts.get(etype, 0) + 1
+            conn.execute(
+                "UPDATE records SET relation_count = ?, entity_count = ?, "
+                "entities_json = ?, entity_types = ? WHERE id = ?",
+                (
+                    len(relations),
+                    len(entities),
+                    json.dumps(entities, ensure_ascii=False),
+                    json.dumps(counts, ensure_ascii=False),
+                    record_id,
+                ),
+            )
     return True
 
 
