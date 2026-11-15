@@ -64,17 +64,38 @@
       <div class="tb-right">
         <span v-if="dirty" class="dirty-flag">未保存</span>
         <span class="count"><b>{{ filtered.length }}</b> / {{ relations.length }} 条</span>
+        <el-button
+          :icon="RefreshLeft"
+          :disabled="!canUndo"
+          title="撤销上一步校正（Ctrl/⌘ + Z）"
+          aria-label="撤销上一步校正"
+          @click="emit('undo')"
+        />
+        <el-button
+          :icon="RefreshRight"
+          :disabled="!canRedo"
+          title="重做校正（Ctrl/⌘ + Shift + Z）"
+          aria-label="重做校正"
+          @click="emit('redo')"
+        />
         <el-button :icon="Plus" @click="openAdd">新增</el-button>
         <el-button
           type="primary"
           :icon="Check"
           :loading="saving"
-          :disabled="!dirty || !recordId"
-          :title="recordId ? '保存校正到历史记录' : '请先存入历史'"
+          :disabled="!dirty || saving"
+          :title="recordId ? '保存校正到历史记录' : '保存为一条新的历史记录'"
           @click="emit('save')"
         >
-          保存校正
+          {{ recordId ? '保存校正' : '保存为新记录' }}
         </el-button>
+        <el-button
+          v-if="recordId"
+          :icon="CopyDocument"
+          :disabled="saving"
+          title="不覆盖原记录，另存为校正副本"
+          @click="emit('snapshot')"
+        >另存副本</el-button>
         <el-button :icon="Download" @click="exportCsv">导出 CSV</el-button>
       </div>
     </div>
@@ -248,9 +269,18 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Check, Close, Download, Plus, Search } from '@element-plus/icons-vue'
+import {
+  Check,
+  Close,
+  CopyDocument,
+  Download,
+  Plus,
+  RefreshLeft,
+  RefreshRight,
+  Search,
+} from '@element-plus/icons-vue'
 
 const props = defineProps({
   relations: { type: Array, default: () => [] },
@@ -260,9 +290,26 @@ const props = defineProps({
   recordId: { type: Number, default: null },
   dirty: { type: Boolean, default: false },
   saving: { type: Boolean, default: false },
+  canUndo: { type: Boolean, default: false },
+  canRedo: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['locate', 'clear-filter', 'update:relations', 'save'])
+const emit = defineEmits([
+  'locate', 'clear-filter', 'update:relations', 'save', 'snapshot', 'undo', 'redo',
+])
+
+/* 撤销 / 重做只在三元组页生效；输入框里仍然交给浏览器原生撤销。 */
+function onHistoryKeydown(event) {
+  const mod = event.metaKey || event.ctrlKey
+  if (!mod || event.key.toLowerCase() !== 'z') return
+  const el = document.activeElement
+  if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+  event.preventDefault()
+  emit(event.shiftKey ? 'redo' : 'undo')
+}
+
+onMounted(() => window.addEventListener('keydown', onHistoryKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onHistoryKeydown))
 
 const picked = ref([])
 const keyword = ref('')

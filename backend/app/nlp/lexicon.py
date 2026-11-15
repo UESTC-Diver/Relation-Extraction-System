@@ -487,3 +487,45 @@ def entity_catalog() -> list[dict]:
         {"key": k, "label": v["label"], "color": v["color"]}
         for k, v in ENTITY_TYPES.items()
     ]
+
+
+# --------------------------------------------------------------------------- #
+# 自定义触发词热更新
+#
+# relation.py 在模块级 `from .lexicon import TRIGGER_INDEX, TRIGGERS_BY_LENGTH`，
+# 拿到的是同一个 dict / list 对象。因此这里**原地**清空再填充，改动立刻对
+# 抽取器可见，不需要重建 RelationExtractor，也不碰 19 类规则目录与配色。
+# --------------------------------------------------------------------------- #
+import threading  # noqa: E402  (放在末尾是为了让上面的资源定义先完成)
+
+_BASE_TRIGGER_INDEX: dict[str, list[RelationRule]] = {
+    t: list(rules) for t, rules in TRIGGER_INDEX.items()
+}
+_TRIGGER_LOCK = threading.Lock()
+_LAST_TRIGGER_SIGNATURE: tuple = ()
+
+
+def apply_custom_triggers(extra: dict[str, list[str]] | None) -> None:
+    """把用户配置的领域触发词并入索引；签名未变时是 O(1) 的空操作。"""
+    global _LAST_TRIGGER_SIGNATURE
+    source = extra or {}
+    signature = tuple(sorted((k, tuple(sorted(v))) for k, v in source.items()))
+    with _TRIGGER_LOCK:
+        if signature == _LAST_TRIGGER_SIGNATURE:
+            return
+        index = {t: list(rules) for t, rules in _BASE_TRIGGER_INDEX.items()}
+        for key, triggers in source.items():
+            rule = RELATION_MAP.get(key)
+            if rule is None:
+                continue
+            for trig in triggers:
+                trig = (trig or "").strip()
+                if len(trig) < 2:
+                    continue
+                bucket = index.setdefault(trig, [])
+                if rule not in bucket:
+                    bucket.append(rule)
+        TRIGGER_INDEX.clear()
+        TRIGGER_INDEX.update(index)
+        TRIGGERS_BY_LENGTH[:] = sorted(index.keys(), key=len, reverse=True)
+        _LAST_TRIGGER_SIGNATURE = signature

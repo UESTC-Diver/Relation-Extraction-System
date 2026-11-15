@@ -12,6 +12,7 @@ venv/
 # 数据库与临时文件
 backend/data/*.db-journal
 backend/data/*.db-wal
+backend/data/*.db-shm
 backend/devtools/check_output.json
 *.log
 
