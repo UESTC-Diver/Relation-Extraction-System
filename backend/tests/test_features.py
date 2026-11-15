@@ -10,7 +10,6 @@ from __future__ import annotations
 import pytest
 
 from app import db
-from app.samples import SAMPLES
 
 TEXT_A = "腾讯控股宣布收购搜狗公司，搜狗将成为腾讯控股的全资子公司。"
 TEXT_B = "阿里巴巴集团投资饿了么公司，双方签署战略合作协议。"

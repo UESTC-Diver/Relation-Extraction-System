@@ -102,7 +102,7 @@ def global_entities(q: str = "", entity_type: str = "", limit: int = 40) -> dict
 
 
 def entity_profile(name: str) -> dict[str, Any]:
-    sql = f"""
+    sql = """
         SELECT r.*, rec.title AS doc_title, rec.created_at AS doc_created
         FROM relations r JOIN records rec ON rec.id = r.record_id
         WHERE COALESCE(NULLIF(r.head_canonical, ''), r.head) = ?

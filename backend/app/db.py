@@ -547,22 +547,69 @@ def get_record(record_id: int) -> dict[str, Any] | None:
     return data
 
 
-def replace_relations(record_id: int, relations: list[dict[str, Any]]) -> bool:
-    """用人工校正后的三元组整体替换某条历史记录的关系，并同步计数。"""
+def replace_relations(
+    record_id: int,
+    relations: list[dict[str, Any]],
+    entities: list[dict[str, Any]] | None = None,
+) -> bool:
+    """用人工校正后的三元组整体替换某条历史记录的关系，并同步计数。
+
+    entities 传了就一并回写实体快照、类型分布与 entity_count —— 人工新增
+    关系可能带进原文里没有的实体，记录详情必须与三元组保持一致；不传则
+    保持原来的实体快照不动，兼容只改关系的旧调用。
+    """
+    clean_entities: list[dict[str, Any]] | None = None
+    if entities is not None:
+        clean_entities = []
+        for raw in entities:
+            if not isinstance(raw, dict):
+                continue
+            text = str(raw.get("text") or "").strip()
+            if not text:
+                continue
+            item = dict(raw)
+            item["text"] = text[:64]
+            clean_entities.append(item)
+
     with connect() as conn:
         exists = conn.execute(
-            "SELECT relation_count FROM records WHERE id = ?", (record_id,)
+            "SELECT relation_count, entity_count FROM records WHERE id = ?", (record_id,)
         ).fetchone()
         if not exists:
             return False
         previous = int(exists["relation_count"] or 0)
+        previous_entities = int(exists["entity_count"] or 0)
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         _insert_relations(conn, record_id, relations)
-        conn.execute(
-            "UPDATE records SET relation_count = ? WHERE id = ?",
-            (len(relations), record_id),
+
+        entity_delta = 0
+        if clean_entities is None:
+            conn.execute(
+                "UPDATE records SET relation_count = ? WHERE id = ?",
+                (len(relations), record_id),
+            )
+        else:
+            counts: dict[str, int] = {}
+            for item in clean_entities:
+                key = str(item.get("type") or "")
+                counts[key] = counts.get(key, 0) + 1
+            conn.execute(
+                """UPDATE records SET relation_count = ?, entity_count = ?,
+                                      entities_json = ?, entity_types = ? WHERE id = ?""",
+                (
+                    len(relations),
+                    len(clean_entities),
+                    json.dumps(clean_entities, ensure_ascii=False),
+                    json.dumps(counts, ensure_ascii=False),
+                    record_id,
+                ),
+            )
+            entity_delta = len(clean_entities) - previous_entities
+        _bump_counters(
+            conn,
+            relations=len(relations) - previous,
+            entities=entity_delta,
         )
-        _bump_counters(conn, relations=len(relations) - previous)
     return True
 
 

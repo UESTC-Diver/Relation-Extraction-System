@@ -28,6 +28,10 @@ class SnapshotRequest(BaseModel):
 
 class RelationsReplaceRequest(BaseModel):
     relations: list[dict] = Field(default_factory=list)
+    entities: list[dict] | None = Field(
+        default=None,
+        description="可选：人工新增关系时补入的实体，随三元组一起写回记录快照",
+    )
 
 
 def _normalize_relations(
@@ -53,8 +57,11 @@ def _normalize_relations(
             confidence = float(item.get("confidence", 1.0))
         except (TypeError, ValueError):
             confidence = 1.0
+        # 显式 null 表示「不指向具体证据句」，落库为 -1；缺省仍是 0（第 0 句）。
+        # 人工新增的关系往往没有原文出处，不能悄悄指到第一句上。
+        raw_index = item.get("sentence_index", 0)
         try:
-            sentence_index = max(0, int(item.get("sentence_index", 0)))
+            sentence_index = -1 if raw_index is None else max(-1, int(raw_index))
         except (TypeError, ValueError):
             sentence_index = 0
         out.append(
@@ -122,7 +129,7 @@ def record_relations_replace(record_id: int, payload: RelationsReplaceRequest) -
     if not db.get_record(record_id):
         raise HTTPException(status_code=404, detail="记录不存在")
     relations = _normalize_relations(payload.relations, default_base="manual")
-    db.replace_relations(record_id, relations)
+    db.replace_relations(record_id, relations, entities=payload.entities)
     return db.get_record(record_id)
 
 

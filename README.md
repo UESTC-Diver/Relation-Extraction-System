@@ -34,7 +34,7 @@
 | **结果可视化** | ① 三元组表格（按关系类型/置信度过滤、关键词搜索、展开行查看完整证据句）② ECharts 力导向/环形关系图（可拖拽、缩放、合并同义实体）③ 统计洞察（实体/关系分布、句级关系数、全库累计） |
 | **结果导出** | 右上角统一导出菜单：三元组 **CSV**（带 BOM，Excel 打开不乱码，表头含规范化名）、完整 **JSON**、**Markdown** 分析报告、**GraphML**（Gephi / yEd / NetworkX 直接打开）、**Neo4j Cypher**（MERGE 语句，含证据与置信度属性）、关系图谱 **PNG**、**单文件离线 HTML 报告**（内嵌样式与静态 SVG 图，无脚本、无外链，双击即看）、**完整项目包 JSON** |
 | **历史记录** | 页面初始化时的示例抽取仅作预览、**不写库**（避免刷新产生重复记录）；主动抽取或点击「存入历史」才入库，支持 FTS5 `trigram` 中文子串检索（短词自动回退 LIKE）、标签精确筛选、分页、载入复现、单条删除与一键清空 |
-| **人工校正** | 三元组表格支持新增、修改、删除、**撤销 / 重做**（按钮与 `Ctrl/⌘ + Z`、`+ Shift + Z`）；点「保存校正」写回历史，保存后提示新增 / 删除条数，`rule_base` 区分自动与手工，人工行标注「人工」；实体清单的「校正」入口可改**实体边界、类型与归一写法**、增删实体，改动写入 `entity_corrections` 留痕；预览态可直接「保存为新记录」，已有记录也能「另存副本」不覆盖原件 |
+| **人工校正** | 三元组表格支持新增、修改、删除、**撤销 / 重做**（按钮与 `Ctrl/⌘ + Z`、`+ Shift + Z`）；点「保存校正」写回历史，保存后提示新增 / 删除条数，`rule_base` 区分自动与手工，人工行标注「人工」；实体清单的「校正」入口可改**实体边界、类型与归一写法**、增删实体，改动写入 `entity_corrections` 留痕；人工新增关系带进来的实体会随三元组一起回写记录快照与计数，未指定证据句的关系记为 `-1` 而不是错指到第 0 句；预览态可直接「保存为新记录」，已有记录也能「另存副本」不覆盖原件 |
 | **批量抽取** | 同步模式一次最多 20 篇：多文件上传（编码逐个自动识别）或按空行分隔的多段文本；文本模式可切「**后台运行**」，最多 100 篇，提交后立即返回任务 id，前端每 500ms 轮询 `/api/tasks/{id}` 显示进度，关掉对话框不中断执行；逐篇显示实体数 / 关系数 / 耗时，单篇失败不打断整批，并给出**跨文档聚合**（高频实体、高频关系、高频三元组） |
 | **跨文档知识库** | 「知识库」对话框三页签：① **全局实体**——按名字/类型检索，画像里列出别名、参与的全部关系、来源文档与首次/最近出现时间，可载入该记录或在当前工作台按实体筛选；② **跨文档图谱**——把多份文档的关系按归一化实体名合并成一张全局网络，可按关系类型收敛；③ **标签与复核**——给记录打标签、查看**跨文档关系冲突**（同一实体对被判成不同关系）与**低置信度复核队列**（默认阈值 0.8）。全局实体直接查 `relations` 的归一字段，不另建实体表，因此人工校正/删除/导入后无需同步 |
 | **质量闭环** | ① **界面化评测台**——一键跑 P/R/F1 与 Macro-F1，展示命中/误抽/漏抽、F1 回归曲线、分关系类型指标、逐条用例与漏抽/误抽明细，也支持传入自定义金标准；② **规则实验室**——给一段文本填候选触发词，做基线与候选的 A/B 试跑并列出「新增 / 消失 / 不变」三栏 diff，试跑不落库、不改当前配置；③ **配置版本**——把当前触发词与词典存成快照，一键回滚并立即热更新索引；评测历史与快照都进库 |
@@ -158,14 +158,17 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # CLI 入口，调用 nlp/evaluation.py（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（46 条，临时库隔离）
+│  ├─ tests/                  # pytest API 回归测试（55 条，临时库隔离）
 │  │  ├─ conftest.py          # 每个用例把 db.DB_PATH 指向 tmp_path，不碰真实 app.db
 │  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越（16 条）
 │  │  ├─ test_features.py     # FTS5/增量计数/批量/自定义规则/健康信息（12 条）
-│  │  └─ test_features_v13.py # 知识库/质量闭环/离线交付/后台任务/PDF·DOCX（18 条）
+│  │  ├─ test_features_v13.py # 知识库/质量闭环/离线交付/后台任务/PDF·DOCX（18 条）
+│  │  └─ test_corrections.py  # 词典/快照/人工校正 P1 回归（9 条）
 │  ├─ pytest.ini              # testpaths 与 pythonpath
+│  ├─ ruff.toml               # 只开 F / E9，聚焦未定义名与未使用导入
 │  ├─ requirements.txt        # 含可选本地解析库 pymupdf / python-docx
-│  └─ requirements-dev.txt    # pytest + httpx
+│  └─ requirements-dev.txt    # pytest + httpx + ruff
+├─ .github/workflows/ci.yml   # push / PR 自动跑 ruff、pytest、F1 门槛与 npm build
 ├─ frontend/
 │  ├─ src/
 │  │  ├─ App.vue              # 站点分流 + 工作台业务（校正栈、深链、导出、批量、工具入口）
@@ -269,14 +272,19 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 ```bash
 cd backend
 python -m pip install -r requirements-dev.txt
-python -m pytest -q        # 46 passed
+python -m ruff check app tests   # lint 门禁
+python -m pytest -q              # 55 passed
+python eval/run_eval.py --json   # F1 ≥ 0.95
 ```
+
+这三步与 `.github/workflows/ci.yml` 里 GitHub Actions 的 backend job 完全一致（另外还有 frontend job 跑 `npm ci && npm run build`）；`ruff.toml` 只开 `F` / `E9`，聚焦未定义名、未使用导入与语法错误这类会让程序悄悄坏掉的问题。
 
 `tests/conftest.py` 在每个用例里把 `db.DB_PATH` 指向 `tmp_path` 下的临时库，测试不会污染 `backend/data/app.db`。
 
 - `test_api.py`（16 条）：内置示例结果基线（18 实体 / 9 三元组）、空文本 400、超限 413、非法扩展名 415、记录不存在 404、`save=false` 不写库、UTF-8 / GBK / BIG5 / UTF-16 上传后逐字比对、SPA 静态路由不能把源码 / README / 数据库拖走。
 - `test_features.py`（12 条）：FTS5 中文子串检索与语法字符降级、增量计数在保存 / 校正 / 删除 / 清空后与库内真值一致、批量文本与批量文件（混合编码）、单篇失败不打断整批、自定义触发词热生效与删除后失效、规则校验、健康信息字段、快照校正写回。
 - `test_features_v13.py`（18 条）：全局实体画像与跨文档图谱合并、标签设置与筛选、冲突检测、低置信度复核队列、评测接口与历史、自定义金标准、规则 A/B 试跑不落库、配置版本回滚、实体级校正写回、单文件离线 HTML（无脚本外链）、只读报告页、项目包 merge / replace 导入、后台批量任务进度与结果、PDF / DOCX 本地解析上传。
+- `test_corrections.py`（9 条）：自定义词典 CRUD 与热生效、非法词条 400、快照往返、人工校正往返（`sentence_index: null` 落库为 -1）、人工新增关系的实体快照回写、非法关系 400、清空全部关系。
 
 ---
 
@@ -381,7 +389,7 @@ python -m pytest -q        # 46 passed
 | `GET` | `/api/records` | 历史记录分页，参数 `limit / offset / keyword / tag`；≥3 字走 FTS5 trigram 索引，短词回退 LIKE；`tag` 精确匹配整个标签 |
 | `POST` | `/api/records` | 把当前结果另存为快照（三元组会先做类型与长度校验） |
 | `GET` | `/api/records/{id}` | 单条记录详情（含实体与三元组） |
-| `PUT` | `/api/records/{id}/relations` | 用人工校正后的三元组整体替换，来源标记为 `manual` |
+| `PUT` | `/api/records/{id}/relations` | 用人工校正后的三元组整体替换，来源标记为 `manual`；可选 `entities` 一并回写实体快照、`entity_types` 与 `entity_count`；`sentence_index` 显式传 `null` 落库为 `-1`（不指向具体证据句） |
 | `PUT` | `/api/records/{id}/entities` | 实体级校正：替换实体数组并写入 `corrections` 留痕 |
 | `DELETE` | `/api/records/{id}` | 删除单条记录 |
 | `DELETE` | `/api/records` | 清空全部记录 |
@@ -577,6 +585,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典；临时补词走界面的「自定义实体词典」。
 - **样式分层**：`styles.css` 是首页与工作台共用的基础层；Element Plus 的组件库 CSS 与皮肤覆盖放在 `element-setup.js` / `element-overrides.css`，只在 `/app` 动态加载。新增 `--el-*` 变量或组件级覆盖时请写进 `element-overrides.css`（选择器保留 `html` 前缀），否则首页会白下载组件样式、工作台会被默认蓝盖掉。
 - 修改后建议执行 `python devtools/check.py` 做回归，再 `npm run build` 刷新前端产物。
+- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`，并跑一次 `npm run build`；CI（`.github/workflows/ci.yml`）在 push 与 PR 上自动执行同样四步，评测还会断言 `F1 ≥ 0.95`。
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。评测算法只有 `app/nlp/evaluation.py` 一份，CLI 与 `/api/eval` 都调用它，不要在界面里另写一套 P/R/F1。
 - 知识库、质量与交付的查询集中在 `store.py`；全局实体直接来自 `relations` 的归一字段，新增查询时优先复用这一层，避免出现需要额外同步的实体表。`/report/{id}` 必须在 `main.py` 的 SPA catch-all 之前注册。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
@@ -587,7 +596,9 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 
 | 项目 | 结论 |
 | --- | --- |
-| 接口回归 | `python -m pytest -q` → **46 passed**（16 条接口 + 12 条第二批 + 18 条 1.3.0 新能力），每个用例把 `db.DB_PATH` 指向 `tmp_path`，不碰真实库 |
+| 接口回归 | `python -m pytest -q` → **55 passed**（16 条接口 + 12 条第二批 + 18 条 1.3.0 新能力 + 9 条 P1 校正回归），每个用例把 `db.DB_PATH` 指向 `tmp_path`，不碰真实库 |
+| 静态检查 | `python -m ruff check app tests` → **All checks passed**（`F` / `E9` 规则集，清理了 2 处未用导入与 1 处多余 f 前缀） |
+| CI 门禁 | `.github/workflows/ci.yml`：backend job 跑 ruff + pytest + `eval/run_eval.py --json` 并断言 `F1 ≥ 0.95`，frontend job 跑 `npm ci && npm run build`；本机四步已按同样顺序全绿 |
 | 效果评测 | `python eval/run_eval.py --json` → **P 0.960 / R 1.000 / F1 0.980 / Macro-F1 0.986**，与第九节一致、本轮未回退；界面评测台复用同一算法，另存 F1 回归历史 |
 | 生产构建 | `npm run build` 通过、**无体积警告**。`index.html` 只引用 1 个 JS 入口 **276.97 KB（gzip 105.42 KB）** + 基础 CSS **41.68 KB（gzip 7.96 KB）**，**完全不请求 Element Plus**；工作台按需加载 `element-setup` JS 288.32 KB / CSS 365.00 KB，图谱 chunk 443.34 KB 独立加载 |
 | 前端分包 | 工作台组件全部异步 chunk；本轮新增 4 个工具对话框也是异步 chunk（3.49 / 5.30 / 5.63 / 9.11 KB），首页不下载；`main.js` 按 `pathname` 决定是否动态注册 Element Plus；`RelationGraph.vue` 只注册 graph / tooltip / CanvasRenderer；超过 80 节点自动降级环形布局 |
