@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import io
-
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 

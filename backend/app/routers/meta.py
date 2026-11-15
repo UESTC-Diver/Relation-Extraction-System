@@ -28,6 +28,7 @@ class SnapshotRequest(BaseModel):
 
 class RelationsReplaceRequest(BaseModel):
     relations: list[dict] = Field(default_factory=list)
+    entities: list[dict] | None = None
 
 
 def _normalize_relations(
@@ -53,10 +54,17 @@ def _normalize_relations(
             confidence = float(item.get("confidence", 1.0))
         except (TypeError, ValueError):
             confidence = 1.0
-        try:
-            sentence_index = max(0, int(item.get("sentence_index", 0)))
-        except (TypeError, ValueError):
-            sentence_index = 0
+        # -1 表示人工新增时没有指定证据句；0 是合法的第一句，不能混用
+        raw_index = item.get("sentence_index")
+        if raw_index is None:
+            sentence_index = -1
+        else:
+            try:
+                sentence_index = int(raw_index)
+            except (TypeError, ValueError):
+                sentence_index = -1
+            if sentence_index < 0:
+                sentence_index = -1
         out.append(
             {
                 "head": head[:64],
@@ -119,7 +127,7 @@ def record_relations_replace(record_id: int, payload: RelationsReplaceRequest) -
     if not db.get_record(record_id):
         raise HTTPException(status_code=404, detail="记录不存在")
     relations = _normalize_relations(payload.relations, default_base="manual")
-    db.replace_relations(record_id, relations)
+    db.replace_relations(record_id, relations, entities=payload.entities)
     return db.get_record(record_id)
 
 

@@ -101,7 +101,7 @@
                 </span>
                 <span class="meta-item">
                   <em>所在句</em>
-                  <b>第 {{ (row.sentence_index ?? 0) + 1 }} 句</b>
+                  <b>{{ hasSentenceIndex(row) ? `第 ${row.sentence_index + 1} 句` : '未指定' }}</b>
                 </span>
                 <span class="meta-item">
                   <em>置信度</em>
@@ -161,8 +161,9 @@
               <button
                 class="locate-btn"
                 type="button"
-                :aria-label="`定位第 ${(row.sentence_index ?? 0) + 1} 句证据句`"
-                :title="`第 ${(row.sentence_index ?? 0) + 1} 句 · 跳到原文`"
+                :disabled="!hasSentenceIndex(row)"
+                :aria-label="hasSentenceIndex(row) ? `定位第 ${row.sentence_index + 1} 句证据句` : '未指定证据句'"
+                :title="hasSentenceIndex(row) ? `第 ${row.sentence_index + 1} 句 · 跳到原文` : '未指定证据句'"
                 @click="emit('locate', row.sentence_index)"
               >
                 原文
@@ -348,6 +349,10 @@ function openAdd() {
   dialogOpen.value = true
 }
 
+function hasSentenceIndex(row) {
+  return Number.isInteger(row.sentence_index) && row.sentence_index >= 0
+}
+
 function openEdit(row) {
   editingIndex.value = row._idx
   form.value = {
@@ -356,7 +361,7 @@ function openEdit(row) {
     relation: row.relation,
     tail: row.tail,
     tail_type: row.tail_type,
-    sentence_index: row.sentence_index ?? null,
+    sentence_index: hasSentenceIndex(row) ? row.sentence_index : null,
     evidence: row.evidence || '',
   }
   dialogOpen.value = true
@@ -384,7 +389,9 @@ function confirm() {
       ? original.tail_canonical || tail
       : canonicalize(tail, form.value.tail_type)
   const sentenceIndex =
-    typeof form.value.sentence_index === 'number' ? form.value.sentence_index : 0
+    typeof form.value.sentence_index === 'number' && form.value.sentence_index >= 0
+      ? form.value.sentence_index
+      : -1
 
   const row = {
     id: original?.id || `manual-${Date.now()}`,
@@ -490,7 +497,7 @@ function exportCsv() {
     ElMessage.warning('当前没有可导出的三元组')
     return
   }
-  const header = ['头实体', '头实体类型', '关系', '尾实体', '尾实体类型', '置信度', '触发词', '证据句']
+  const header = ['头实体', '头实体类型', '关系', '尾实体', '尾实体类型', '置信度', '触发词', '证据句', '来源']
   const lines = filtered.value.map((r) => [
     r.head,
     typeLabel(r.head_type),
@@ -500,6 +507,7 @@ function exportCsv() {
     r.confidence.toFixed(2),
     r.trigger || '',
     r.evidence || '',
+    ruleLabel(r.rule_base),
   ])
   const esc = (v) => `"${String(v).replace(/"/g, '""')}"`
   const csv = [header, ...lines].map((row) => row.map(esc).join(',')).join('\r\n')
@@ -833,6 +841,17 @@ function exportCsv() {
   background: #f7e9e7;
   border-color: #e4aca7;
   color: #8f2a23;
+}
+
+.locate-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.locate-btn:disabled:hover {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--ink-2);
 }
 
 /* ---------- 展开区 ---------- */

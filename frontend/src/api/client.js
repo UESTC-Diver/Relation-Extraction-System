@@ -45,8 +45,8 @@ export const getRecord = (id) => http.get(`/records/${id}`)
 export const saveSnapshot = (result, title = '', source = 'text') =>
   http.post('/records', { result, title, source })
 
-export const saveRelations = (id, relations) =>
-  http.put(`/records/${id}/relations`, { relations })
+export const saveRelations = (id, relations, entities = null) =>
+  http.put(`/records/${id}/relations`, { relations, entities })
 
 export const deleteRecord = (id) => http.delete(`/records/${id}`)
 

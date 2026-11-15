@@ -128,12 +128,12 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # P/R/F1 评测脚本（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（16 条，临时库隔离）
+│  ├─ tests/                  # pytest API 回归测试（25 条，临时库隔离）
 │  │  ├─ conftest.py          # APP_DB_PATH 指向 tmp_path，不碰真实 app.db
 │  │  └─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越
 │  ├─ pytest.ini              # testpaths 与 pythonpath
 │  ├─ requirements.txt
-│  └─ requirements-dev.txt    # pytest + httpx
+│  └─ requirements-dev.txt    # pytest + httpx + ruff
 ├─ frontend/
 │  ├─ src/
 │  │  ├─ App.vue              # 站点入口分流（/ 首页、/app 工作台、404）+ 工作台全部业务
@@ -453,7 +453,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 3. **长文本上限 20000 字**（超出返回 400），上传文件上限 2MB（超出返回 413）。
 4. 长度超过 13 字的超长机构名可能被截断（后缀构词窗口限制）。
 5. **单句内实体过多时**，窗口截断可能导致少数远距离关系漏抽。
-6. **人工校正范围有限**：可增删改三元组，但实体清单与实体边界仍由规则生成；手工新增关系不会自动把新实体加入标注页，也不会重算实体统计。
+6. **人工校正范围有限**：可增删改三元组；新增关系会尝试按原文补实体并重算实体统计，但实体文本若未在原文出现，只会进入三元组/图谱，不会进入标注页。
 7. **单机单用户设计**：SQLite 单文件、无鉴权，历史记录与自定义词典对所有访问者共享，不适合多用户并发部署。
 
 ---
@@ -463,6 +463,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 新增关系类型：在 `backend/app/nlp/lexicon.py` 的 `RELATION_RULES` 中追加 `RelationRule`（key/label/颜色/头尾类型/触发词/说明），如需句法模板再向 `SPECIAL_PATTERNS` 追加一条 `(模板, 关系key, 头序号, 尾序号)`。
 - 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典。
 - 修改后建议执行 `python devtools/check.py` 做回归，再 `npm run build` 刷新前端产物。
+- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`；CI（`.github/workflows/ci.yml`）也会自动执行这三步并检查构建。
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。

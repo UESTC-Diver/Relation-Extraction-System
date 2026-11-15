@@ -19,6 +19,22 @@ const TYPE_LABEL = {
   PRODUCT: '产品技术',
 }
 
+const RULE_BASE_LABEL = {
+  pattern: '句式模板',
+  trigger: '触发词',
+  passive: '被动句',
+  conjunction: '并列结构',
+  postmodifier: '后置定语',
+  attributive: '职位线索',
+  coref: '指代消解',
+  chain: '主语链',
+  manual: '人工校正',
+}
+
+function ruleBaseLabel(base) {
+  return RULE_BASE_LABEL[base] || base || '—'
+}
+
 function pad(n) {
   return String(n).padStart(2, '0')
 }
@@ -78,6 +94,7 @@ export function buildCsv(result, meta) {
     'confidence',
     'trigger',
     'evidence',
+    'rule_base',
   ]
   const rows = (result.relations || []).map((r) => [
     r.head,
@@ -91,6 +108,7 @@ export function buildCsv(result, meta) {
     r.confidence,
     r.trigger || '',
     r.evidence || '',
+    r.rule_base || '',
   ])
   const body = [header, ...rows].map((cols) => cols.map(csvCell).join(',')).join('\r\n')
   return {
@@ -153,11 +171,17 @@ export function buildMarkdown(result, meta) {
   }
 
   if (relations.length) {
-    lines.push('## 关系三元组', '', '| 头实体 | 关系 | 尾实体 | 触发词 | 置信度 |', '| --- | --- | --- | --- | --- |')
+    lines.push(
+      '## 关系三元组',
+      '',
+      '| 头实体 | 关系 | 尾实体 | 触发词 | 置信度 | 来源 |',
+      '| --- | --- | --- | --- | --- | --- |',
+    )
     for (const r of relations) {
       lines.push(
         `| ${mdCell(r.head)} | ${mdCell(r.relation_label || r.relation)} | ` +
-          `${mdCell(r.tail)} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} |`,
+          `${mdCell(r.tail)} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} | ` +
+          `${mdCell(ruleBaseLabel(r.rule_base))} |`,
       )
     }
     lines.push('')
