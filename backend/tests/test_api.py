@@ -64,9 +64,11 @@ def test_extract_rejects_too_long_text(client):
 
 
 def test_upload_rejects_unknown_extension(client):
-    files = {"file": ("note.pdf", b"%PDF-1.4", "application/pdf")}
+    # PDF 自 1.3.0 起是合法输入，这里改用真正不在白名单里的扩展名
+    files = {"file": ("note.exe", b"MZ binary", "application/octet-stream")}
     r = client.post("/api/extract/file", files=files)
     assert r.status_code == 415
+    assert ".pdf" in r.json()["detail"]
 
 
 @pytest.mark.parametrize(

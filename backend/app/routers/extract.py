@@ -134,11 +134,63 @@ def _decode(raw: bytes, filename: str) -> str:
     return text.lstrip("\ufeff")
 
 
+def _read_pdf(raw: bytes, name: str) -> str:
+    """PyMuPDF 本地解析，不联网、不调用任何外部服务。"""
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        try:
+            import fitz  # 旧版包名的兼容别名
+        except ImportError:
+            raise HTTPException(
+                status_code=400, detail="未安装 PyMuPDF，无法解析 PDF（可执行 pip install pymupdf）"
+            )
+    try:
+        with fitz.open(stream=raw, filetype="pdf") as doc:
+            text = "\n".join(page.get_text() for page in doc)
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"PDF 解析失败：{err}")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail=f"{name} 没有可提取的文字层（扫描件需先做 OCR）")
+    return text
+
+
+def _read_docx(raw: bytes, name: str) -> str:
+    """python-docx 本地解析：段落 + 表格单元格。"""
+    try:
+        from io import BytesIO
+        from docx import Document
+    except ImportError:
+        raise HTTPException(status_code=400, detail="未安装 python-docx，无法解析 DOCX（可执行 pip install python-docx）")
+    try:
+        document = Document(BytesIO(raw))
+        blocks = [p.text for p in document.paragraphs if p.text.strip()]
+        for table in document.tables:
+            for row in table.rows:
+                line = "\t".join(cell.text.strip() for cell in row.cells)
+                if line.strip():
+                    blocks.append(line)
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"DOCX 解析失败：{err}")
+    if not blocks:
+        raise HTTPException(status_code=400, detail=f"{name} 没有可提取的文字内容")
+    return "\n".join(blocks)
+
+
+ALLOWED_SUFFIXES = (".txt", ".md", ".text", ".pdf", ".docx")
+
+
 async def _read_upload(file: UploadFile) -> tuple[str, str]:
-    """校验扩展名并按块读取，返回 (文本, 去掉扩展名的标题)。"""
+    """校验扩展名并按块读取，返回 (文本, 去掉扩展名的标题)。
+
+    纯文本走候选编码打分；PDF / DOCX 用本地解析库取文字层，全程离线。
+    """
     name = file.filename or "upload.txt"
-    if not name.lower().endswith((".txt", ".md", ".text")):
-        raise HTTPException(status_code=415, detail="仅支持 .txt / .md / .text 文本文件")
+    if not name.lower().endswith(ALLOWED_SUFFIXES):
+        raise HTTPException(
+            status_code=415,
+            detail="仅支持 .txt / .md / .text / .pdf / .docx 文件",
+        )
     # 分块读取，超限立刻中断 —— 不要等整个文件进内存再判断
     chunks: list[bytes] = []
     size = 0
@@ -153,7 +205,13 @@ async def _read_upload(file: UploadFile) -> tuple[str, str]:
     raw = b"".join(chunks)
     if not raw:
         raise HTTPException(status_code=400, detail="文件内容为空")
-    text = await run_in_threadpool(_decode, raw, name)
+    lowered = name.lower()
+    if lowered.endswith(".pdf"):
+        text = await run_in_threadpool(_read_pdf, raw, name)
+    elif lowered.endswith(".docx"):
+        text = await run_in_threadpool(_read_docx, raw, name)
+    else:
+        text = await run_in_threadpool(_decode, raw, name)
     return text, name.rsplit(".", 1)[0]
 
 
@@ -278,9 +336,9 @@ def extract_text(payload: ExtractRequest) -> ExtractResponse:
         return _run(payload.text, payload.title, payload.save, "text")
 
 
-@router.post("/extract/file", response_model=ExtractResponse, summary="上传 .txt 文件抽取")
+@router.post("/extract/file", response_model=ExtractResponse, summary="上传文本文件抽取")
 async def extract_file(
-    file: UploadFile = File(..., description="UTF-8 / GBK 编码的 .txt 文件"),
+    file: UploadFile = File(..., description=".txt / .md / .text / .pdf / .docx，纯本地解析"),
     save: bool = True,
 ) -> ExtractResponse:
     text, title = await _read_upload(file)
@@ -299,7 +357,7 @@ def extract_batch(payload: BatchRequest) -> dict:
 
 @router.post("/extract/batch/files", summary="批量上传多个文本文件")
 async def extract_batch_files(
-    files: list[UploadFile] = File(..., description="多个 .txt / .md 文本"),
+    files: list[UploadFile] = File(..., description="多个 .txt / .md / .pdf / .docx 文件"),
     save: bool = True,
 ) -> dict:
     if len(files) > MAX_BATCH_ITEMS:
@@ -316,7 +374,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "engine": "rule-based-cn-nlp",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "relation_types": len(RELATION_RULES),
         "custom_terms": len(db.list_custom_terms()),
         "custom_rules": len(db.list_custom_rules()),

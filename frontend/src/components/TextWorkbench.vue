@@ -3,7 +3,7 @@
     <div class="wb-head">
       <div class="panel-title">
         文本输入
-        <small>粘贴中文新闻，或上传 .txt</small>
+        <small>粘贴中文新闻，或上传 .txt / .pdf / .docx</small>
       </div>
       <div class="wb-head-right">
         <span class="wb-count" :class="{ 'is-warn': charCount > 18000 }">
@@ -58,7 +58,7 @@
       />
 
       <div class="wb-actions">
-        <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text">
+        <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text,.pdf,.docx">
           <el-button class="wb-upload" :icon="Upload">上传</el-button>
         </el-upload>
         <el-button :icon="Collection" @click="dictOpen = true">词典</el-button>
@@ -163,9 +163,9 @@ function applySample(sample) {
 function onFile(uploadFile) {
   const file = uploadFile?.raw
   if (!file) return
-  const isText = /\.(txt|md|text)$/i.test(file.name)
+  const isText = /\.(txt|md|text|pdf|docx)$/i.test(file.name)
   if (!isText) {
-    ElMessage.error('仅支持 .txt / .md 文本文件')
+    ElMessage.error('仅支持 .txt / .md / .text / .pdf / .docx 文件')
     return
   }
   if (file.size > 2 * 1024 * 1024) {

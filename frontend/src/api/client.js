@@ -92,4 +92,36 @@ export const deleteDictionaryTerm = (id) => http.delete(`/dictionary/${id}`)
 
 export const clearDictionary = () => http.delete('/dictionary')
 
+/* ---------- 知识库：跨文档检索、全局图谱、标签、冲突与复核 ---------- */
+export const getEntities = (params = {}) => http.get('/entities', { params })
+export const getEntityProfile = (name) =>
+  http.get('/entities/profile', { params: { name } })
+export const getGlobalGraph = (params = {}) => http.get('/graph/global', { params })
+export const getTags = () => http.get('/tags')
+export const setRecordTags = (id, tags) => http.put(`/records/${id}/tags`, { tags })
+export const getConflicts = (params = {}) => http.get('/conflicts', { params })
+export const getReviewQueue = (params = {}) => http.get('/review', { params })
+
+/* ---------- 质量闭环：评测台、规则实验室、实体校正 ---------- */
+export const getEvalGold = () => http.get('/eval/gold')
+export const runEval = (payload = {}) => http.post('/eval', payload)
+export const getEvalRuns = () => http.get('/eval/runs')
+export const getEvalRun = (id) => http.get(`/eval/runs/${id}`)
+export const trialRules = (payload) => http.post('/rules/trial', payload)
+export const getRuleVersions = () => http.get('/rules/versions')
+export const saveRuleVersion = (name) => http.post('/rules/versions', { name })
+export const restoreRuleVersion = (id) => http.post(`/rules/versions/${id}/restore`)
+export const saveEntities = (id, entities, corrections = []) =>
+  http.put(`/records/${id}/entities`, { entities, corrections })
+
+/* ---------- 交付：离线报告、项目包、后台任务 ---------- */
+export const buildReport = (payload) => http.post('/report', payload)
+export const exportProject = () => http.get('/project/export')
+export const importProject = (payload, mode = 'merge') =>
+  http.post('/project/import', { payload, mode })
+export const submitBatchTask = (items, save = true) =>
+  http.post('/tasks/batch', { items, save })
+export const getTask = (id) => http.get(`/tasks/${id}`)
+export const getTasks = () => http.get('/tasks')
+
 export default http

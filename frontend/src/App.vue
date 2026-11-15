@@ -48,6 +48,44 @@
           <el-icon :size="13"><Clock /></el-icon>
           历史记录
         </button>
+        <button class="btn-quiet" type="button" @click="knowledgeOpen = true">
+          <el-icon :size="13"><Files /></el-icon>
+          知识库
+        </button>
+        <el-dropdown trigger="click" placement="bottom-end" popper-class="export-menu" @command="onMoreCommand">
+          <button class="btn-quiet" type="button" title="更多功能" aria-label="更多功能">
+            <el-icon :size="13"><EditPen /></el-icon>
+            更多
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="eval">
+                <span class="exp-label">效果评测台</span>
+                <span class="exp-hint">跑 P / R / F1，看漏抽误抽与回归曲线</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="rules">
+                <span class="exp-label">规则实验室</span>
+                <span class="exp-hint">候选触发词 A/B 试跑与配置回滚</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="import" divided>
+                <span class="exp-label">导入项目包</span>
+                <span class="exp-hint">文本、校正、词典与规则一次还原</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="share">
+                <span class="exp-label">复制只读报告链接</span>
+                <span class="exp-hint">独立页面，不暴露编辑入口</span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <input
+          ref="projectInput"
+          type="file"
+          accept=".json,application/json"
+          class="sr-only"
+          aria-label="选择项目包文件"
+          @change="onProjectFile"
+        />
       </div>
     </header>
 
@@ -182,6 +220,14 @@
                     <span class="exp-label">Neo4j Cypher</span>
                     <span class="exp-hint">MERGE 语句，粘进 Neo4j Browser 即可导入</span>
                   </el-dropdown-item>
+                  <el-dropdown-item command="html" divided>
+                    <span class="exp-label">单文件 HTML 报告</span>
+                    <span class="exp-hint">含统计、图谱、证据与原文，可离线打开</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="project" divided>
+                    <span class="exp-label">完整项目包 JSON</span>
+                    <span class="exp-hint">文本、校正、词典、触发词与金标准</span>
+                  </el-dropdown-item>
                   <el-dropdown-item command="png" divided :disabled="tab !== 'graph'">
                     <span class="exp-label">关系图谱 PNG</span>
                     <span class="exp-hint">{{ tab === 'graph' ? '当前视图直接导出' : '切到图谱页可导出' }}</span>
@@ -236,6 +282,7 @@
             :result="result"
             :schema="schema"
             :link="link"
+            @edit-entities="entityFixOpen = true"
           />
           <TripleTable
             v-else-if="tab === 'triples'"
@@ -322,6 +369,22 @@
 
     <HistoryDrawer v-model="historyOpen" @load="onLoadRecord" />
     <BatchDialog v-model="batchOpen" @load="onBatchLoad" @finished="refreshStats" />
+    <KnowledgeDialog
+      v-model="knowledgeOpen"
+      :active-record-id="activeRecordId"
+      :schema="schema"
+      @load="onKnowledgeLoad"
+      @focus="onKnowledgeFocus"
+    />
+    <EvalDialog v-model="evalOpen" />
+    <RulesLabDialog v-model="rulesOpen" :schema="schema" @changed="refreshStats" />
+    <EntityFixDialog
+      v-model="entityFixOpen"
+      :entities="result?.entities || []"
+      :record-id="activeRecordId"
+      :schema="schema"
+      @saved="onLoadRecord"
+    />
   </div>
 </template>
 
@@ -360,6 +423,10 @@ const RelationGraph = defineAsyncComponent(() => import('./components/RelationGr
 const StatsOverview = defineAsyncComponent(() => import('./components/StatsOverview.vue'))
 const HistoryDrawer = defineAsyncComponent(() => import('./components/HistoryDrawer.vue'))
 const BatchDialog = defineAsyncComponent(() => import('./components/BatchDialog.vue'))
+const KnowledgeDialog = defineAsyncComponent(() => import('./components/KnowledgeDialog.vue'))
+const EvalDialog = defineAsyncComponent(() => import('./components/EvalDialog.vue'))
+const RulesLabDialog = defineAsyncComponent(() => import('./components/RulesLabDialog.vue'))
+const EntityFixDialog = defineAsyncComponent(() => import('./components/EntityFixDialog.vue'))
 
 /**
  * 站点只有三个入口：/ 是落地页，/app 是工作台，其余路径是品牌 404。
@@ -391,6 +458,11 @@ const historyOpen = ref(false)
 const activeRecordId = ref(null)
 const graphRef = ref(null)
 const batchOpen = ref(false)
+const knowledgeOpen = ref(false)
+const evalOpen = ref(false)
+const rulesOpen = ref(false)
+const entityFixOpen = ref(false)
+const projectInput = ref(null)
 
 /* ---------- 人工校正闭环 ----------
    表格编辑的是 editableRelations；savedRelations 是最近一次保存后的基线，
@@ -737,6 +809,8 @@ const EXPORT_MIME = {
   md: 'text/markdown;charset=utf-8',
   graphml: 'application/graphml+xml;charset=utf-8',
   cypher: 'text/plain;charset=utf-8',
+  html: 'text/html;charset=utf-8',
+  project: 'application/json;charset=utf-8',
 }
 
 const EXPORT_BUILDERS = {
@@ -747,8 +821,9 @@ const EXPORT_BUILDERS = {
   cypher: buildCypher,
 }
 
-/** 导出当前结果：CSV / JSON / Markdown 由工具模块生成，PNG 取自图表实例。 */
-function onExport(kind) {
+/** 导出当前结果：CSV / JSON / Markdown / GraphML / Cypher 由工具模块生成，
+ *  PNG 取自图表实例，HTML 报告与项目包由后端组装（保证与库内真值一致）。 */
+async function onExport(kind) {
   const data = result.value
   if (!data) return
   const meta = { title: title.value || '未命名文本', recordId: activeRecordId.value }
@@ -767,6 +842,22 @@ function onExport(kind) {
       ElMessage.success('图谱已导出')
       return
     }
+    if (kind === 'html') {
+      const payload = activeRecordId.value
+        ? { record_id: activeRecordId.value, title: meta.title }
+        : { result: data, title: meta.title }
+      const file = await api.buildReport(payload)
+      download(file.filename, file.html, EXPORT_MIME.html)
+      ElMessage.success(`已导出 ${file.filename}`)
+      return
+    }
+    if (kind === 'project') {
+      const pkg = await api.exportProject()
+      const name = `项目包-${new Date().toISOString().slice(0, 10)}.json`
+      download(name, JSON.stringify(pkg, null, 2), EXPORT_MIME.project)
+      ElMessage.success(`已导出 ${name}`)
+      return
+    }
 
     const file = EXPORT_BUILDERS[kind](data, meta)
     download(file.filename, file.content, EXPORT_MIME[kind])
@@ -774,6 +865,58 @@ function onExport(kind) {
   } catch (err) {
     ElMessage.error(`导出失败：${err.message}`)
   }
+}
+
+/* ---------- 新增功能的入口 ---------- */
+async function onMoreCommand(command) {
+  if (command === 'eval') evalOpen.value = true
+  if (command === 'rules') rulesOpen.value = true
+  if (command === 'import') projectInput.value?.click()
+  if (command === 'share') await copyReadonlyLink()
+}
+
+async function copyReadonlyLink() {
+  if (!activeRecordId.value) {
+    ElMessage.warning('请先存入历史，再复制只读报告链接')
+    return
+  }
+  const url = `${location.origin}/report/${activeRecordId.value}`
+  try {
+    await navigator.clipboard.writeText(url)
+    ElMessage.success('只读报告链接已复制')
+  } catch {
+    ElMessage.info(`请手动复制：${url}`)
+  }
+}
+
+async function onProjectFile(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  try {
+    const payload = JSON.parse(await file.text())
+    const res = await api.importProject(payload, 'merge')
+    ElMessage.success(`已导入 ${res.records} 篇记录、${res.relations} 条关系`)
+    await refreshStats()
+  } catch (err) {
+    ElMessage.error(`导入失败：${err.message}`)
+  } finally {
+    event.target.value = ''
+  }
+}
+
+async function onKnowledgeLoad(id) {
+  try {
+    onLoadRecord(await api.getRecord(id))
+    ElMessage.success(`已载入 #${id}`)
+  } catch (err) {
+    ElMessage.error(`载入失败：${err.message}`)
+  }
+}
+
+function onKnowledgeFocus(name) {
+  entityFilter.value = { name }
+  tab.value = 'triples'
+  liveMessage.value = `已筛选含「${name}」的三元组`
 }
 
 async function onFile(file) {
@@ -1226,6 +1369,23 @@ onBeforeUnmount(() => {
   }
   .hero {
     padding: 24px 16px 32px;
+  }
+}
+
+@media (max-width: 720px) {
+  /* 四个页签加导出按钮在 390px 下有 500+px，独占一行并允许横向滚动，
+     不让结果栏把整页撑宽。指示条仍按 offsetLeft 在滚动容器内定位。 */
+  .head-right {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .segmented {
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .seg-item {
+    min-height: 44px;
   }
 }
 </style>

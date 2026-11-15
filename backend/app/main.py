@@ -18,9 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
-from . import db
+from . import db, store
 from .nlp.tokenizer import warmup
-from .routers import dictionary, extract, meta, rules
+from .routers import delivery, dictionary, extract, knowledge, meta, quality, rules
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
@@ -28,6 +28,7 @@ FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "di
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    store.fail_stale_tasks()  # 重启后内存中的后台 worker 已不存在
     warmup()  # 预热 jieba 词典，避免首个请求卡顿
     yield
 
@@ -38,9 +39,10 @@ app = FastAPI(
         "基于词典与词法规则的中文实体识别 + 关系抽取服务。\n\n"
         "识别实体：人物 / 组织机构 / 地理位置 / 时间 / 金额 / 产品技术\n"
         "抽取关系：19 类，输出 <头实体, 关系, 尾实体> 三元组\n"
-        "支持人工校正、证据联动、自定义实体词典、自定义关系触发词与批量抽取"
+        "支持人工校正、证据联动、自定义词典与触发词、批量抽取、跨文档知识库、"
+        "界面化评测与离线报告"
     ),
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -79,6 +81,10 @@ app.include_router(extract.router)
 app.include_router(meta.router)
 app.include_router(dictionary.router)
 app.include_router(rules.router)
+app.include_router(knowledge.router)
+app.include_router(quality.router)
+# delivery 里含 /report/{id} 独立只读页，必须注册在 SPA catch-all 之前
+app.include_router(delivery.router)
 
 
 @app.get("/", include_in_schema=False)

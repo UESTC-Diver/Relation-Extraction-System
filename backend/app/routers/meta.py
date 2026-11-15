@@ -82,8 +82,11 @@ def records(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     keyword: str = Query(default=""),
+    tag: str = Query(default="", description="按知识库标签精确筛选"),
 ) -> dict:
-    return db.list_records(limit=limit, offset=offset, keyword=keyword.strip())
+    return db.list_records(
+        limit=limit, offset=offset, keyword=keyword.strip(), tag=tag.strip()
+    )
 
 
 @router.get("/records/{record_id}", summary="单条历史记录详情")

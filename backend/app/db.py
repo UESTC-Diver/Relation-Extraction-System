@@ -88,11 +88,60 @@ CREATE TABLE IF NOT EXISTS counters (
     sum_ms    REAL    NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO counters (id) VALUES (1);
+
+-- 界面化评测的历史结果：每次跑 P/R/F1 留一条，用于回归曲线
+CREATE TABLE IF NOT EXISTS eval_runs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT    NOT NULL,
+    cases       INTEGER NOT NULL DEFAULT 0,
+    tp          INTEGER NOT NULL DEFAULT 0,
+    fp          INTEGER NOT NULL DEFAULT 0,
+    fn          INTEGER NOT NULL DEFAULT 0,
+    precision   REAL    NOT NULL DEFAULT 0,
+    recall      REAL    NOT NULL DEFAULT 0,
+    f1          REAL    NOT NULL DEFAULT 0,
+    macro_f1    REAL    NOT NULL DEFAULT 0,
+    report_json TEXT    NOT NULL DEFAULT '{}'
+);
+
+-- 规则实验室的配置快照：自定义触发词 + 实体词条，可一键回滚
+CREATE TABLE IF NOT EXISTS rule_versions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    created_at TEXT    NOT NULL,
+    rules_json TEXT    NOT NULL DEFAULT '[]',
+    terms_json TEXT    NOT NULL DEFAULT '[]'
+);
+
+-- 实体级校正痕迹：只记改动，不覆盖原始抽取快照的语义
+CREATE TABLE IF NOT EXISTS entity_corrections (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id   INTEGER NOT NULL,
+    original    TEXT    NOT NULL,
+    corrected   TEXT    NOT NULL,
+    entity_type TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL
+);
+
+-- 后台任务：批量抽取等长任务提交后立即返回 id，前端轮询进度
+CREATE TABLE IF NOT EXISTS tasks (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    done        INTEGER NOT NULL DEFAULT 0,
+    total       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    result_json TEXT NOT NULL DEFAULT '{}',
+    error       TEXT NOT NULL DEFAULT ''
+);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
 INDEX_AFTER_MIGRATE = """
 CREATE INDEX IF NOT EXISTS idx_relations_head ON relations (head_canonical);
+CREATE INDEX IF NOT EXISTS idx_relations_confidence ON relations (confidence);
+CREATE INDEX IF NOT EXISTS idx_relations_record_conf ON relations (record_id, confidence);
 """
 
 
@@ -289,6 +338,12 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "ALTER TABLE relations ADD COLUMN rule_base TEXT NOT NULL DEFAULT 'trigger'"
         )
 
+    # 知识库化：记录标签用逗号分隔字符串存，避免为多对多关系再加一张表。
+    # 旧库补列后默认空串，已有记录内容一个字节都不动。
+    record_cols = {row["name"] for row in conn.execute("PRAGMA table_info(records)")}
+    if "tags" not in record_cols:
+        conn.execute("ALTER TABLE records ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+
 
 def init_db() -> None:
     with connect() as conn:
@@ -383,6 +438,10 @@ def save_record(
     return record_id
 
 
+def _split_tags(raw: str | None) -> list[str]:
+    return [t.strip() for t in (raw or "").split(",") if t.strip()]
+
+
 def _record_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
@@ -395,38 +454,62 @@ def _record_row(row: sqlite3.Row) -> dict[str, Any]:
         "relation_count": row["relation_count"],
         "elapsed_ms": row["elapsed_ms"],
         "created_at": row["created_at"],
+        "tags": _split_tags(row["tags"]) if "tags" in row.keys() else [],
     }
 
 
-def list_records(limit: int = 20, offset: int = 0, keyword: str = "") -> dict[str, Any]:
-    where, params = "", []
+def _list_record_rows(conn, clauses: list[str], params: list, limit: int, offset: int):
+    where = "WHERE " + " AND ".join(clauses) if clauses else ""
+    total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
+    # 只取列表要用的列：text 与 entities_json 可能各有上万字，
+    # SELECT * 会把它们白白读进内存再丢掉。
+    rows = conn.execute(
+        f"""SELECT id, title, substr(text, 1, 200) AS text, source, tags,
+                   char_count, sentence_count, entity_count, relation_count,
+                   elapsed_ms, created_at
+            FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+        [*params, limit, offset],
+    ).fetchall()
+    return total, rows
+
+
+def list_records(
+    limit: int = 20, offset: int = 0, keyword: str = "", tag: str = ""
+) -> dict[str, Any]:
+    clauses: list[str] = []
+    params: list = []
+    used_fts = False
     if keyword:
         # 优先走 trigram 全文索引；短词或不支持 FTS5 的环境退回 LIKE。
         fts = _fts_where(keyword)
-        where, params = fts or ("WHERE text LIKE ? OR title LIKE ?", [f"%{keyword}%", f"%{keyword}%"])
+        if fts:
+            clause, fts_params = fts
+            clauses.append(clause[6:])  # 去掉开头的 "WHERE "
+            params.extend(fts_params)
+            used_fts = True
+        else:
+            clauses.append("(text LIKE ? OR title LIKE ?)")
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+    if tag:
+        # 逗号包裹后精确匹配整个标签，避免 "AI" 命中 "AI医疗"
+        clauses.append("instr(',' || tags || ',', ',' || ? || ',') > 0")
+        params.append(tag.strip())
+
     with connect() as conn:
         try:
-            total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
-            # 只取列表要用的列：text 与 entities_json 可能各有上万字，
-            # SELECT * 会把它们白白读进内存再丢掉。
-            rows = conn.execute(
-                f"""SELECT id, title, substr(text, 1, 200) AS text, source,
-                           char_count, sentence_count, entity_count, relation_count,
-                           elapsed_ms, created_at
-                    FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
-                [*params, limit, offset],
-            ).fetchall()
+            total, rows = _list_record_rows(conn, clauses, params, limit, offset)
         except sqlite3.Error:
+            if not used_fts:
+                raise
             # MATCH 语法意外报错时不能让搜索整个挂掉，退回最保守的 LIKE
-            where, params = "WHERE text LIKE ? OR title LIKE ?", [f"%{keyword}%", f"%{keyword}%"]
-            total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
-            rows = conn.execute(
-                f"""SELECT id, title, substr(text, 1, 200) AS text, source,
-                           char_count, sentence_count, entity_count, relation_count,
-                           elapsed_ms, created_at
-                    FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
-                [*params, limit, offset],
-            ).fetchall()
+            clauses, params = [], []
+            if keyword:
+                clauses.append("(text LIKE ? OR title LIKE ?)")
+                params.extend([f"%{keyword}%", f"%{keyword}%"])
+            if tag:
+                clauses.append("instr(',' || tags || ',', ',' || ? || ',') > 0")
+                params.append(tag.strip())
+            total, rows = _list_record_rows(conn, clauses, params, limit, offset)
     return {"total": total, "items": [_record_row(r) for r in rows]}
 
 
