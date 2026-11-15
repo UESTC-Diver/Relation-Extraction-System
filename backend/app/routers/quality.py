@@ -184,8 +184,11 @@ def restore_version(version_id: int) -> dict:
 
 @router.put("/records/{record_id}/entities", summary="校正实体边界、类型与归一写法")
 def replace_entities(record_id: int, payload: EntityReplaceRequest) -> dict:
-    if not db.get_record(record_id):
+    record = db.get_record(record_id)
+    if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
+    if record.get("review_status") == "final":
+        raise HTTPException(status_code=409, detail="记录已定稿，请先在复核台解锁后再修改")
     clean: list[dict[str, Any]] = []
     for i, raw in enumerate(payload.entities):
         if not isinstance(raw, dict):

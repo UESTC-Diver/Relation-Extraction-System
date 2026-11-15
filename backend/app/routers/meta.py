@@ -126,8 +126,11 @@ def record_save(payload: SnapshotRequest) -> dict:
 
 @router.put("/records/{record_id}/relations", summary="保存人工校正的三元组")
 def record_relations_replace(record_id: int, payload: RelationsReplaceRequest) -> dict:
-    if not db.get_record(record_id):
+    record = db.get_record(record_id)
+    if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
+    if record.get("review_status") == "final":
+        raise HTTPException(status_code=409, detail="记录已定稿，请先在复核台解锁后再修改")
     relations = _normalize_relations(payload.relations, default_base="manual")
     db.replace_relations(record_id, relations, entities=payload.entities)
     return db.get_record(record_id)

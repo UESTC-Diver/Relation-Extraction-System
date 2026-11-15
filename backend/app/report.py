@@ -44,6 +44,15 @@ color:var(--ink2);font-size:12px}
 white-space:pre-wrap;line-height:1.9;font-size:15px}
 .graph{background:var(--surface);border:1px solid var(--line);padding:8px}
 .note{font-size:12px;color:var(--muted);margin-top:8px}
+.rv{border:1px solid var(--line);background:var(--surface);padding:14px 20px}
+.rv-bar{font-size:12.5px;color:var(--muted);padding-bottom:8px}
+.rv-item{padding:9px 0;border-top:1px solid var(--line);font-size:13px}
+.rv-badge{display:inline-block;min-width:42px;padding:1px 7px;margin-right:10px;
+border-radius:3px;font-size:11px;text-align:center}
+.rv-ok{background:#e6f2e6;color:#2f6b3a}
+.rv-q{background:#fdf0d5;color:#8a5a10}
+.rv-no{background:#f7e2e0;color:#a8322a}
+.rv-note{color:var(--muted);font-size:12px;margin-left:8px}
 footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);
 font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:16px}
 footer a{color:var(--red)}
@@ -112,7 +121,46 @@ def _graph_svg(relations: list[dict], limit: int = 12) -> str:
     return '<div class="graph">' + "".join(parts) + "</div>"
 
 
-def build_report_html(data: dict, readonly_link: bool = False) -> str:
+_REVIEW_STATUS = {"draft": "草稿", "in_review": "复核中", "final": "已定稿"}
+_REVIEW_LABEL = {
+    "approved": "通过", "questioned": "存疑", "rejected": "驳回", "pending": "待复核",
+}
+_REVIEW_CLS = {"approved": "rv-ok", "questioned": "rv-q", "rejected": "rv-no"}
+
+
+def _review_html(review: dict | None) -> str:
+    """把人工复核结论渲染成独立区块；草稿且无结论时整段不出现。"""
+    if not review:
+        return ""
+    summary = review.get("summary") or {}
+    bar = (
+        f"状态：{_esc(_REVIEW_STATUS.get(review.get('status'), '草稿'))}"
+        f" · 已复核 {_esc(summary.get('reviewed', 0))}/{_esc(summary.get('total', 0))}"
+        f" · 通过 {_esc(summary.get('approved', 0))}"
+        f" · 存疑 {_esc(summary.get('questioned', 0))}"
+        f" · 驳回 {_esc(summary.get('rejected', 0))}"
+    )
+    rows = []
+    for item in review.get("relations") or []:
+        decision = item.get("decision", "pending")
+        label = _esc(_REVIEW_LABEL.get(decision, "待复核"))
+        cls = _REVIEW_CLS.get(decision, "")
+        head = _esc(item.get("head"))
+        relation = _esc(item.get("relation_label"))
+        tail = _esc(item.get("tail"))
+        note = item.get("review_note") or ""
+        note_html = f'<span class="rv-note">批注：{_esc(note)}</span>' if note else ""
+        rows.append(
+            f'<div class="rv-item"><span class="rv-badge {cls}">{label}</span>'
+            f"{head} — {relation} — {tail}{note_html}</div>"
+        )
+    body = "".join(rows) or '<div class="rv-item">还没有逐条结论</div>'
+    return f'<h2>复核结论</h2><div class="rv"><div class="rv-bar">{bar}</div>{body}</div>'
+
+
+def build_report_html(
+    data: dict, readonly_link: bool = False, review: dict | None = None
+) -> str:
     stats = data.get("stats") or {}
     relations = data.get("relations") or []
     entities = data.get("entities") or []
@@ -163,6 +211,7 @@ def build_report_html(data: dict, readonly_link: bool = False) -> str:
         if readonly_link and record_id
         else "本机处理 · 数据不出本机"
     )
+    review_html = _review_html(review)
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -175,6 +224,7 @@ def build_report_html(data: dict, readonly_link: bool = False) -> str:
   {f'· 历史记录 #{_esc(record_id)}' if record_id else '· 预览结果（未入库）'}</p>
 </header>
 <h2>结果概览</h2><div class="cards">{card_html}</div>
+{review_html}
 <h2>关系网络</h2>{_graph_svg(relations)}
 <p class="note">静态示意图，按归一化后的实体合并；完整可交互图谱请在工作台查看。</p>
 <h2>关系类型分布</h2>

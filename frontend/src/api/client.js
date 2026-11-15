@@ -124,4 +124,18 @@ export const submitBatchTask = (items, save = true) =>
 export const getTask = (id) => http.get(`/tasks/${id}`)
 export const getTasks = () => http.get('/tasks')
 
+/* ---------- 复核闭环：逐条结论、状态流转、定稿快照 ---------- */
+export const getReviewState = (id) => http.get(`/records/${id}/review`)
+export const saveReviewDecisions = (id, decisions, reviewer = '') =>
+  http.put(`/records/${id}/review/decisions`, { decisions, reviewer })
+export const setReviewStatus = (id, status) =>
+  http.put(`/records/${id}/review/status`, { status })
+export const finalizeReview = (id, title = '') =>
+  http.post(`/records/${id}/review/finalize`, { title })
+export const getReviewSnapshots = (id) => http.get(`/records/${id}/review/snapshots`)
+
+/* ---------- 只读报告分享链接（带签名与有效期） ---------- */
+export const createShareLink = (recordId, ttlSeconds = 7 * 24 * 3600) =>
+  http.post('/report/share', { record_id: recordId, ttl_seconds: ttlSeconds })
+
 export default http

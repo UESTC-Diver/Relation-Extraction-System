@@ -62,29 +62,30 @@
       </div>
 
       <div class="tb-right">
+        <span v-if="locked" class="locked-flag">已定稿 · 锁定</span>
         <span v-if="dirty" class="dirty-flag">未保存</span>
         <span class="count"><b>{{ filtered.length }}</b> / {{ relations.length }} 条</span>
         <el-button
           :icon="RefreshLeft"
-          :disabled="!canUndo"
+          :disabled="locked || !canUndo"
           title="撤销上一步校正（Ctrl/⌘ + Z）"
           aria-label="撤销上一步校正"
           @click="emit('undo')"
         />
         <el-button
           :icon="RefreshRight"
-          :disabled="!canRedo"
+          :disabled="locked || !canRedo"
           title="重做校正（Ctrl/⌘ + Shift + Z）"
           aria-label="重做校正"
           @click="emit('redo')"
         />
-        <el-button :icon="Plus" @click="openAdd">新增</el-button>
+        <el-button :icon="Plus" :disabled="locked" @click="openAdd">新增</el-button>
         <el-button
           type="primary"
           :icon="Check"
           :loading="saving"
-          :disabled="!dirty || saving"
-          :title="recordId ? '保存校正到历史记录' : '保存为一条新的历史记录'"
+          :disabled="locked || !dirty || saving"
+          :title="locked ? '已定稿，请先在复核台解锁' : (recordId ? '保存校正到历史记录' : '保存为一条新的历史记录')"
           @click="emit('save')"
         >
           {{ recordId ? '保存校正' : '保存为新记录' }}
@@ -144,6 +145,11 @@
           <template #default="{ row }">
             <span class="rel-pill" :style="pillStyle(row.relation)">{{ row.relation_label }}</span>
             <span v-if="row.rule_base === 'manual'" class="manual-tag">人工</span>
+            <span
+              v-if="reviewOf(row)"
+              :style="reviewMarkStyle(reviewOf(row))"
+              :title="`复核结论：${REVIEW_MARK[reviewOf(row)]}`"
+            >{{ REVIEW_MARK[reviewOf(row)] }}</span>
           </template>
         </el-table-column>
 
@@ -188,7 +194,7 @@
               >
                 原文
               </button>
-              <el-button link size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button link size="small" :disabled="locked" @click="openEdit(row)">编辑</el-button>
               <el-popconfirm
                 title="删除这条三元组？"
                 confirm-button-text="删除"
@@ -196,7 +202,7 @@
                 @confirm="remove(row)"
               >
                 <template #reference>
-                  <el-button link size="small" class="r-del">删除</el-button>
+                  <el-button link size="small" class="r-del" :disabled="locked">删除</el-button>
                 </template>
               </el-popconfirm>
             </div>
@@ -292,11 +298,44 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   canUndo: { type: Boolean, default: false },
   canRedo: { type: Boolean, default: false },
+  reviewMap: { type: Object, default: () => ({}) },
+  locked: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
   'locate', 'clear-filter', 'update:relations', 'save', 'snapshot', 'undo', 'redo',
 ])
+
+/* 复核结论由后端按「归一实体 + 关系 + 尾实体 + 句序」算指纹，前端用同一
+   规则拼可读 key 查表，不必在浏览器里复刻 sha256。 */
+const REVIEW_MARK = { approved: '通过', questioned: '存疑', rejected: '驳回' }
+const REVIEW_COLORS = {
+  approved: { color: '#2f6b3a', background: '#e6f2e6', borderColor: '#9bc9a4' },
+  questioned: { color: '#8a5a10', background: '#fdf0d5', borderColor: '#e0bd77' },
+  rejected: { color: '#a8322a', background: '#f7e2e0', borderColor: '#e4aca7' },
+}
+
+function reviewOf(row) {
+  const key = [
+    row.head_canonical || row.head,
+    row.relation,
+    row.tail_canonical || row.tail,
+    row.sentence_index ?? 0,
+  ].join('|')
+  return props.reviewMap?.[key] || ''
+}
+
+function reviewMarkStyle(decision) {
+  return {
+    display: 'inline-block',
+    marginLeft: '4px',
+    padding: '0 4px',
+    borderRadius: '3px',
+    fontSize: '10px',
+    border: '1px solid transparent',
+    ...REVIEW_COLORS[decision],
+  }
+}
 
 /* 撤销 / 重做只在三元组页生效；输入框里仍然交给浏览器原生撤销。 */
 function onHistoryKeydown(event) {
@@ -667,6 +706,15 @@ function exportCsv() {
   color: #b45309;
   background: #fef3c7;
   border: 1px solid #fcd34d;
+  border-radius: var(--r-xs);
+  padding: 1px 6px;
+}
+
+.locked-flag {
+  font-size: 10.5px;
+  color: #8f2a23;
+  background: #f7e9e7;
+  border: 1px solid #e4aca7;
   border-radius: var(--r-xs);
   padding: 1px 6px;
 }

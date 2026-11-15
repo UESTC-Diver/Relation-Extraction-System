@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import io
 import os
 import threading
+import zipfile
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import contextmanager
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -22,6 +26,14 @@ MAX_CHARS = 20000
 MAX_FILE_BYTES = 2 * 1024 * 1024
 CHUNK_SIZE = 64 * 1024
 MAX_BATCH_ITEMS = 20
+MAX_PDF_PAGES = 60
+MAX_DOCX_UNCOMPRESSED = 8 * 1024 * 1024
+try:
+    PARSE_TIMEOUT = max(1.0, float(os.environ.get("APP_PARSE_TIMEOUT", "10")))
+except ValueError:
+    PARSE_TIMEOUT = 10.0
+# 解析库的调用单独放一个线程池，才能对超时做硬截断
+_parse_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="parse")
 
 # 候选编码。gbk 是 gb18030 的子集，结果等价，不再单列。
 ENCODINGS = ("utf-8-sig", "utf-8", "gb18030", "big5", "utf-16")
@@ -136,6 +148,8 @@ def _decode(raw: bytes, filename: str) -> str:
 
 def _read_pdf(raw: bytes, name: str) -> str:
     """PyMuPDF 本地解析，不联网、不调用任何外部服务。"""
+    if not raw.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 PDF 文件")
     try:
         import pymupdf as fitz
     except ImportError:
@@ -147,41 +161,68 @@ def _read_pdf(raw: bytes, name: str) -> str:
             )
     try:
         with fitz.open(stream=raw, filetype="pdf") as doc:
+            if len(doc) > MAX_PDF_PAGES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"PDF 页数过多（{len(doc)} 页），请控制在 {MAX_PDF_PAGES} 页以内",
+                )
             text = "\n".join(page.get_text() for page in doc)
+    except HTTPException:
+        raise
     except Exception as err:
         raise HTTPException(status_code=400, detail=f"PDF 解析失败：{err}")
     if not text.strip():
         raise HTTPException(status_code=400, detail=f"{name} 没有可提取的文字层（扫描件需先做 OCR）")
-    return text
+    return text[: MAX_CHARS * 2]
 
 
 def _read_docx(raw: bytes, name: str) -> str:
     """python-docx 本地解析：段落 + 表格单元格。"""
+    if not raw.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 DOCX 文件")
     try:
-        from io import BytesIO
         from docx import Document
     except ImportError:
         raise HTTPException(status_code=400, detail="未安装 python-docx，无法解析 DOCX（可执行 pip install python-docx）")
     try:
-        document = Document(BytesIO(raw))
+        # 解压炸弹防护：先核对 zip 入口与累计解压体积，再交给解析库
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            if "word/document.xml" not in archive.namelist():
+                raise HTTPException(status_code=400, detail=f"{name} 缺少 DOCX 正文结构")
+            total = sum(info.file_size for info in archive.infolist())
+            if total > MAX_DOCX_UNCOMPRESSED:
+                raise HTTPException(status_code=413, detail="DOCX 解压后体积过大，请精简文档后重试")
+        document = Document(io.BytesIO(raw))
         blocks = [p.text for p in document.paragraphs if p.text.strip()]
         for table in document.tables:
             for row in table.rows:
                 line = "\t".join(cell.text.strip() for cell in row.cells)
                 if line.strip():
                     blocks.append(line)
+    except HTTPException:
+        raise
     except Exception as err:
         raise HTTPException(status_code=400, detail=f"DOCX 解析失败：{err}")
     if not blocks:
         raise HTTPException(status_code=400, detail=f"{name} 没有可提取的文字内容")
-    return "\n".join(blocks)
+    return "\n".join(blocks)[: MAX_CHARS * 2]
 
 
 ALLOWED_SUFFIXES = (".txt", ".md", ".text", ".pdf", ".docx")
 
 
+def _parse_with_timeout(raw: bytes, name: str) -> str:
+    """解析库放进独立线程池并设硬超时；超时回 400，不把请求挂住。"""
+    target = _read_pdf if name.lower().endswith(".pdf") else _read_docx
+    future = _parse_pool.submit(target, raw, name)
+    try:
+        return future.result(timeout=PARSE_TIMEOUT)
+    except FutureTimeoutError as err:
+        raise HTTPException(status_code=400, detail="文档解析超时，请换用更小的文件") from err
+
+
 async def _read_upload(file: UploadFile) -> tuple[str, str]:
-    """校验扩展名并按块读取，返回 (文本, 去掉扩展名的标题)。
+    """校验扩展名与文件头并按块读取，返回 (文本, 去掉扩展名的标题)。
 
     纯文本走候选编码打分；PDF / DOCX 用本地解析库取文字层，全程离线。
     """
@@ -206,10 +247,13 @@ async def _read_upload(file: UploadFile) -> tuple[str, str]:
     if not raw:
         raise HTTPException(status_code=400, detail="文件内容为空")
     lowered = name.lower()
-    if lowered.endswith(".pdf"):
-        text = await run_in_threadpool(_read_pdf, raw, name)
-    elif lowered.endswith(".docx"):
-        text = await run_in_threadpool(_read_docx, raw, name)
+    # 扩展名 + magic bytes 双检：改后缀的二进制文件不能混进解析库
+    if lowered.endswith(".pdf") and not raw.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 PDF 文件")
+    if lowered.endswith(".docx") and not raw.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 DOCX 文件")
+    if lowered.endswith((".pdf", ".docx")):
+        text = await run_in_threadpool(_parse_with_timeout, raw, name)
     else:
         text = await run_in_threadpool(_decode, raw, name)
     return text, name.rsplit(".", 1)[0]
@@ -374,7 +418,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "engine": "rule-based-cn-nlp",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "relation_types": len(RELATION_RULES),
         "custom_terms": len(db.list_custom_terms()),
         "custom_rules": len(db.list_custom_rules()),

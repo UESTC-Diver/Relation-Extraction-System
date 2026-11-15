@@ -9,10 +9,12 @@ venv/
 # 前端构建产物（如需单端口部署请保留，通常由 npm run build 生成）
 # dist/
 
-# 数据库与临时文件
+# 数据库与临时文件（运行时数据不进版本库）
+backend/data/*.db
 backend/data/*.db-journal
 backend/data/*.db-wal
 backend/data/*.db-shm
+backend/data/.report-secret
 backend/devtools/check_output.json
 *.log
 

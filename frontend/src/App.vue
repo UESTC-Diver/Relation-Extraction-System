@@ -52,6 +52,20 @@
           <el-icon :size="13"><Files /></el-icon>
           知识库
         </button>
+        <button
+          class="btn-quiet"
+          type="button"
+          :disabled="!activeRecordId"
+          :title="activeRecordId ? '逐条复核、定稿并生成只读报告' : '先存入历史再开始复核'"
+          aria-label="复核与定稿"
+          @click="reviewOpen = true"
+        >
+          <el-icon :size="13"><EditPen /></el-icon>
+          复核<span
+            v-if="reviewBadge"
+            :style="{ marginLeft: '4px', fontSize: '10px', color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }"
+          >{{ reviewBadge }}</span>
+        </button>
         <el-dropdown trigger="click" placement="bottom-end" popper-class="export-menu" @command="onMoreCommand">
           <button class="btn-quiet" type="button" title="更多功能" aria-label="更多功能">
             <el-icon :size="13"><EditPen /></el-icon>
@@ -295,6 +309,8 @@
             :saving="saving"
             :can-undo="undoStack.length > 0"
             :can-redo="redoStack.length > 0"
+            :review-map="reviewMap"
+            :locked="reviewLocked"
             @locate="onLocate"
             @clear-filter="entityFilter = null"
             @update:relations="onRelationsChange"
@@ -385,6 +401,12 @@
       :schema="schema"
       @saved="onLoadRecord"
     />
+    <ReviewDialog
+      v-model="reviewOpen"
+      :record-id="activeRecordId"
+      :title="title"
+      @changed="refreshReview"
+    />
   </div>
 </template>
 
@@ -427,6 +449,7 @@ const KnowledgeDialog = defineAsyncComponent(() => import('./components/Knowledg
 const EvalDialog = defineAsyncComponent(() => import('./components/EvalDialog.vue'))
 const RulesLabDialog = defineAsyncComponent(() => import('./components/RulesLabDialog.vue'))
 const EntityFixDialog = defineAsyncComponent(() => import('./components/EntityFixDialog.vue'))
+const ReviewDialog = defineAsyncComponent(() => import('./components/ReviewDialog.vue'))
 
 /**
  * 站点只有三个入口：/ 是落地页，/app 是工作台，其余路径是品牌 404。
@@ -462,7 +485,31 @@ const knowledgeOpen = ref(false)
 const evalOpen = ref(false)
 const rulesOpen = ref(false)
 const entityFixOpen = ref(false)
+const reviewOpen = ref(false)
+const reviewState = ref(null)
 const projectInput = ref(null)
+
+/* 复核进度挂在顶栏；定稿后由后端判定不可编辑，前端只负责禁用入口，
+   真正的写入拦截在 PUT /records/{id}/relations 与 /entities 上。 */
+const reviewBadge = computed(() => {
+  const s = reviewState.value?.summary
+  return s?.total ? `${s.reviewed}/${s.total}` : ''
+})
+const reviewLocked = computed(() => reviewState.value?.editable === false)
+const reviewMap = computed(() => {
+  const map = {}
+  for (const r of reviewState.value?.relations || []) {
+    if (!r.decision || r.decision === 'pending') continue
+    const key = [
+      r.head_canonical || r.head,
+      r.relation,
+      r.tail_canonical || r.tail,
+      r.sentence_index ?? 0,
+    ].join('|')
+    map[key] = r.decision
+  }
+  return map
+})
 
 /* ---------- 人工校正闭环 ----------
    表格编辑的是 editableRelations；savedRelations 是最近一次保存后的基线，
@@ -868,6 +915,19 @@ async function onExport(kind) {
 }
 
 /* ---------- 新增功能的入口 ---------- */
+async function refreshReview() {
+  if (!activeRecordId.value) {
+    reviewState.value = null
+    return
+  }
+  try {
+    reviewState.value = await api.getReviewState(activeRecordId.value)
+  } catch {
+    reviewState.value = null
+  }
+}
+watch(activeRecordId, refreshReview, { immediate: true })
+
 async function onMoreCommand(command) {
   if (command === 'eval') evalOpen.value = true
   if (command === 'rules') rulesOpen.value = true
@@ -880,12 +940,17 @@ async function copyReadonlyLink() {
     ElMessage.warning('请先存入历史，再复制只读报告链接')
     return
   }
-  const url = `${location.origin}/report/${activeRecordId.value}`
   try {
-    await navigator.clipboard.writeText(url)
-    ElMessage.success('只读报告链接已复制')
-  } catch {
-    ElMessage.info(`请手动复制：${url}`)
+    // 签名在服务端算，前端拿不到密钥；生产配置 APP_REPORT_SECRET 后裸 id 会被拒
+    const res = await api.createShareLink(activeRecordId.value)
+    try {
+      await navigator.clipboard.writeText(res.url)
+      ElMessage.success('带签名的只读报告链接已复制')
+    } catch {
+      ElMessage.info(`请手动复制：${res.url}`)
+    }
+  } catch (err) {
+    ElMessage.error(`生成链接失败：${err.message}`)
   }
 }
 

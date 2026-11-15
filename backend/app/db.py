@@ -135,6 +135,31 @@ CREATE TABLE IF NOT EXISTS tasks (
     result_json TEXT NOT NULL DEFAULT '{}',
     error       TEXT NOT NULL DEFAULT ''
 );
+
+-- 复核闭环：逐条三元组的人工结论与批注
+CREATE TABLE IF NOT EXISTS review_decisions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id    INTEGER NOT NULL,
+    relation_key TEXT    NOT NULL,
+    decision     TEXT    NOT NULL,
+    note         TEXT    NOT NULL DEFAULT '',
+    reviewer     TEXT    NOT NULL DEFAULT '',
+    updated_at   TEXT    NOT NULL,
+    UNIQUE (record_id, relation_key)
+);
+CREATE INDEX IF NOT EXISTS idx_review_record ON review_decisions (record_id);
+
+-- 定稿快照：final 之后三元组与结论的不可变副本
+CREATE TABLE IF NOT EXISTS review_snapshots (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id      INTEGER NOT NULL,
+    created_at     TEXT    NOT NULL,
+    title          TEXT    NOT NULL DEFAULT '',
+    relations_json TEXT    NOT NULL DEFAULT '[]',
+    entities_json  TEXT    NOT NULL DEFAULT '[]',
+    decisions_json TEXT    NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_record ON review_snapshots (record_id);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
@@ -343,6 +368,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     record_cols = {row["name"] for row in conn.execute("PRAGMA table_info(records)")}
     if "tags" not in record_cols:
         conn.execute("ALTER TABLE records ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+    if "review_status" not in record_cols:
+        conn.execute(
+            "ALTER TABLE records ADD COLUMN review_status TEXT NOT NULL DEFAULT 'draft'"
+        )
 
 
 def init_db() -> None:
@@ -455,6 +484,7 @@ def _record_row(row: sqlite3.Row) -> dict[str, Any]:
         "elapsed_ms": row["elapsed_ms"],
         "created_at": row["created_at"],
         "tags": _split_tags(row["tags"]) if "tags" in row.keys() else [],
+        "review_status": row["review_status"] if "review_status" in row.keys() else "draft",
     }
 
 
@@ -617,6 +647,8 @@ def delete_record(record_id: int) -> bool:
     with connect() as conn:
         totals = _record_totals(conn, record_id)
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM review_decisions WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM review_snapshots WHERE record_id = ?", (record_id,))
         cur = conn.execute("DELETE FROM records WHERE id = ?", (record_id,))
         if cur.rowcount > 0 and totals:
             _bump_counters(
@@ -633,6 +665,8 @@ def delete_record(record_id: int) -> bool:
 def clear_records() -> int:
     with connect() as conn:
         conn.execute("DELETE FROM relations")
+        conn.execute("DELETE FROM review_decisions")
+        conn.execute("DELETE FROM review_snapshots")
         cur = conn.execute("DELETE FROM records")
         conn.execute(
             """UPDATE counters SET records = 0, chars = 0, entities = 0,

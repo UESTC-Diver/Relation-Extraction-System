@@ -6,11 +6,11 @@ from __future__ import annotations
 import re
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from .. import db, store
+from .. import db, review_store, security, store
 from ..report import build_report_html
 from . import extract
 
@@ -20,11 +20,24 @@ router = APIRouter(tags=["交付"])
 MAX_TASK_ITEMS = 100
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="batch")
 
+# 只读分享页：内容可能含用户原文，不允许共享缓存、不允许被搜索引擎收录。
+_READONLY_HEADERS = {
+    "Cache-Control": "private, no-store",
+    "X-Robots-Tag": "noindex, nofollow",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+}
+
 
 class ReportRequest(BaseModel):
     record_id: int | None = None
     title: str = ""
     result: dict | None = None
+
+
+class ShareRequest(BaseModel):
+    record_id: int
+    ttl_seconds: int = Field(default=7 * 24 * 3600, ge=60, le=90 * 24 * 3600)
 
 
 class ProjectImportRequest(BaseModel):
@@ -74,7 +87,11 @@ def make_report(payload: ReportRequest) -> dict:
         raise HTTPException(status_code=404, detail="记录不存在或未提供结果")
     if payload.title:
         data = {**data, "title": payload.title}
-    html = build_report_html(data, readonly_link=False)
+    html = build_report_html(
+        data,
+        readonly_link=False,
+        review=review_store.report_review(payload.record_id),
+    )
     return {
         "filename": f"{_safe_filename(data.get('title', ''))}-分析报告.html",
         "html": html,
@@ -82,9 +99,40 @@ def make_report(payload: ReportRequest) -> dict:
     }
 
 
+@router.post("/api/report/share", summary="生成带签名与有效期的只读报告链接")
+def make_share_link(payload: ShareRequest, request: Request) -> dict:
+    if not db.get_record(payload.record_id):
+        raise HTTPException(status_code=404, detail="记录不存在")
+    base = str(request.base_url).rstrip("/")
+    return {
+        "url": security.sign_report(payload.record_id, payload.ttl_seconds, base),
+        "signed": True,
+        "enforced": security.signing_enabled(),
+        "ttl_seconds": payload.ttl_seconds,
+    }
+
+
 @router.get("/report/{record_id}", include_in_schema=False, response_class=HTMLResponse)
-def shared_report(record_id: int) -> HTMLResponse:
-    """独立只读报告页：不加载工作台 JS，也不暴露编辑与历史入口。"""
+def shared_report(
+    record_id: int,
+    expires: str = Query(default=""),
+    token: str = Query(default=""),
+) -> HTMLResponse:
+    """独立只读报告页：不加载工作台 JS，也不暴露编辑与历史入口。
+
+    生产配置 APP_REPORT_SECRET 后，裸 id 无法访问，必须带有效签名与过期时间；
+    本机未配置时保持开箱即用（旧链接与回归测试不受影响）。
+    """
+    if security.signing_enabled() and not security.verify_report(record_id, expires, token):
+        return HTMLResponse(
+            "<!DOCTYPE html><html lang='zh-CN'><meta charset='utf-8'>"
+            "<body style='font-family:system-ui;padding:48px;background:#f6f3ea;color:#1e1c18'>"
+            "<h1 style='font-weight:500'>链接无效或已过期</h1>"
+            "<p>请回到工作台重新生成分享链接。</p>"
+            "<a style='color:#a8322a' href='/'>返回首页</a></body></html>",
+            status_code=403,
+            headers=_READONLY_HEADERS,
+        )
     data = _result_from_record(record_id)
     if not data:
         return HTMLResponse(
@@ -93,10 +141,13 @@ def shared_report(record_id: int) -> HTMLResponse:
             "<h1 style='font-weight:500'>报告不存在</h1><p>这条记录可能已被删除。</p>"
             "<a style='color:#a8322a' href='/'>返回首页</a></body></html>",
             status_code=404,
+            headers=_READONLY_HEADERS,
         )
     return HTMLResponse(
-        build_report_html(data, readonly_link=True),
-        headers={"Cache-Control": "no-cache"},
+        build_report_html(
+            data, readonly_link=True, review=review_store.report_review(record_id)
+        ),
+        headers=_READONLY_HEADERS,
     )
 
 

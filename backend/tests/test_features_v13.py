@@ -23,7 +23,7 @@ def seed(client, texts=(TEXT_A, TEXT_B)):
 
 def test_health_reports_new_version(client):
     data = client.get("/api/health").json()
-    assert data["version"] == "1.3.0"
+    assert data["version"] == "1.4.0"
     assert data["status"] == "ok"
 
 
