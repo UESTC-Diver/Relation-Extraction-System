@@ -17,8 +17,9 @@
 ------------------------------
 - **本地观察**（纯函数，零网络）：句式可疑信号 + 关系抽取结果 + 证据质量。
   这是基线和主体，断网也完整可用。
-- **外部核验**（可配置 provider）：默认 ``null`` provider，不发任何请求；
-  配置了 key 才走 Serper / Tavily。只送「实体名 + 关系短句」，绝不上传全文。
+- **外部核验**（可配置 provider）：默认离线（``verify_text`` 的 ``use_external=False``），
+  纯函数可复现；用户主动勾选联网时走零 key 的公开来源抽查（维基百科 + DuckDuckGo），
+  也可换成需要 key 的 Serper / Tavily。只送「实体名 + 关系短句」，绝不上传全文。
 - **AI 表达层**（默认关闭）：可选把结论改写成一段人话摘要，由供应商 SDK 完成，
   且强制网关能看到「AI 生成」标识。它不参与任何打分，关掉不影响结论。
 
@@ -111,7 +112,10 @@ SIGNAL_RULES: list[dict[str, Any]] = [
 
 # 外部证据来源分级。域名后缀命中即定级，逐级降权；都不命中算 unknown。
 _OFFICIAL_HINTS = (".gov.cn", ".court.gov.cn", ".people.com.cn", ".xinhuanet.com", ".news.cn")
-_MAJOR_HINTS = ("sina.", "sohu.", "163.com", "qq.com", "thepaper.cn", "caixin.com", "yicai.com", "cctv.")
+_MAJOR_HINTS = (
+    "sina.", "sohu.", "163.com", "qq.com", "thepaper.cn", "caixin.com", "yicai.com",
+    "cctv.", "wikipedia.org",  # 维基百科：零 key 核验的外部来源，按参考来源计
+)
 _COMMUNITY_HINTS = ("zhihu.", "weibo.", "bbs.", "tieba.", "douyin.", "xiaohongshu.", "bilibili.")
 _SOURCE_LABELS = {
     "official": "官方 / 权威机构",
@@ -235,24 +239,132 @@ class TavilyProvider(SearchProvider):
         return out
 
 
+class FreeProvider(SearchProvider):
+    """零 key 的公开来源抽查：维基百科 API（稳）+ DuckDuckGo HTML（尽力而为）。
+
+    为什么需要它
+    ------------
+    课程演示只查几次，为这点用量去申请 Serper / Tavily 账号不值当。这个 provider
+    不需要任何 key、任何配置，开箱即用。它查的是**公开百科与搜索摘要**，只用于
+    给用户提供「可以去哪核实」的线索，权威性明显低于官方来源，所以来源分级里
+    维基归「主流 / 参考」、DuckDuckGo 归「社区」，绝不会因为查到了就抬高结论。
+
+    两条来源都做了失败静默：国内网络对 DuckDuckGo 偶尔不通、维基偶有超时，都不
+    影响甄别主体。全挂了就返回空证据，结论标注「未外部核实」——和离线模式一致。
+    """
+
+    name = "free"
+    label = "公开来源抽查（免费·零配置）"
+
+    def available(self) -> bool:
+        return True
+
+    def search(self, query: str) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        out.extend(_wikipedia_search(query))
+        out.extend(_duckduckgo_search(query))
+        # 去重保序，最多 5 条
+        seen: set[str] = set()
+        unique = []
+        for e in out:
+            if e["url"] in seen:
+                continue
+            seen.add(e["url"])
+            unique.append(e)
+            if len(unique) >= 5:
+                break
+        return unique
+
+
+def _wikipedia_search(query: str) -> list[dict[str, Any]]:
+    """维基百科 opensearch：零 key、国内可达、返回结构化条目。超时静默返回空。"""
+    terms = [t for t in re.split(r"[\s，,]+", query) if len(t) >= 2][:2]
+    if not terms:
+        return []
+    url = (
+        "https://zh.wikipedia.org/w/api.php"
+        "?action=opensearch&format=json&limit=3&search="
+        + urllib.parse.quote(terms[0])
+    )
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "RelationExtractionVerify/2.3 (offline-demo)"})
+        with urllib.request.urlopen(req, timeout=EXTERNAL_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        titles, descs, links = data[1], data[2], data[3]
+    except Exception:
+        return []
+    out = []
+    for title, desc, link in zip(titles, descs, links):
+        if not str(link).startswith(("http://", "https://")):
+            continue
+        out.append(
+            {
+                "title": f"维基百科 · {title}",
+                "url": str(link)[:500],
+                "snippet": str(desc)[:300] or f"可前往维基百科查阅「{title}」条目自行核实。",
+            }
+        )
+    return out
+
+
+def _duckduckgo_search(query: str) -> list[dict[str, Any]]:
+    """DuckDuckGo lite POST：零 key 兜底。国内常不通，失败静默，不拖慢主流程。"""
+    body = urllib.parse.urlencode({"q": query}).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            "https://lite.duckduckgo.com/lite/",
+            data=body,
+            headers={"User-Agent": "Mozilla/5.0", "Content-Type": "application/x-www-form-urlencoded"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=EXTERNAL_TIMEOUT) as resp:
+            page = resp.read().decode("utf-8", "ignore")
+    except Exception:
+        return []
+
+    def clean(raw: str) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", raw)).strip()
+
+    hrefs = re.findall(
+        r"<a[^>]+class=['\"]result-link['\"][^>]+href=['\"]([^'\"]+)['\"][^>]*>(.*?)</a>",
+        page, re.S | re.I,
+    )
+    snippets = re.findall(r"<td[^>]+class=['\"]result-snippet['\"][^>]*>(.*?)</td>", page, re.S | re.I)
+    out = []
+    for i, (href, title) in enumerate(hrefs[:5]):
+        m = re.search(r"uddg=([^&]+)", href)
+        real = urllib.parse.unquote(m.group(1)) if m else href
+        if not real.startswith(("http://", "https://")):
+            continue
+        out.append({
+            "title": clean(title)[:160] or "搜索结果",
+            "url": real[:500],
+            "snippet": clean(snippets[i])[:300] if i < len(snippets) else "",
+        })
+    return out
+
+
 def build_provider() -> SearchProvider:
-    """按环境变量选择 provider；任何异常都降级成 NullProvider，绝不让联网挂掉分析。"""
+    """按环境变量选择 provider；无 key 时用零配置免费 provider，联网异常在 search 内降级。"""
     choice = os.environ.get("VERIFY_PROVIDER", "auto").strip().lower()
     serper_key = os.environ.get("SERPER_API_KEY", "").strip()
     tavily_key = os.environ.get("TAVILY_API_KEY", "").strip()
 
     if choice == "off":
-        return NullProvider("已通过配置关闭联网核验")
+        return NullProvider("已通过配置关闭外部核验")
+    if choice == "free":
+        return FreeProvider()
     if choice == "serper":
         return SerperProvider(serper_key) if serper_key else NullProvider("已选择 Serper，但未配置 SERPER_API_KEY")
     if choice == "tavily":
         return TavilyProvider(tavily_key) if tavily_key else NullProvider("已选择 Tavily，但未配置 TAVILY_API_KEY")
-    # auto：谁配了 key 用谁，优先 Serper
+    # auto 优先级：配了 key 的正规 provider > 零配置免费 provider
     if serper_key:
         return SerperProvider(serper_key)
     if tavily_key:
         return TavilyProvider(tavily_key)
-    return NullProvider("未配置搜索服务密钥，当前为离线模式")
+    # 默认零配置可用：维基百科 + DuckDuckGo 公开来源抽查，不用申请任何 key
+    return FreeProvider()
 
 
 def capability() -> dict[str, Any]:
@@ -263,8 +375,8 @@ def capability() -> dict[str, Any]:
         "provider": provider.name,
         "provider_label": provider.label,
         "reason": getattr(provider, "reason", ""),
-        "options": ["off", "auto", "serper", "tavily"],
-        "privacy_note": "联网时只发送实体名与关系短语（不超过 60 字），不会上传原文全文。",
+        "options": ["off", "auto", "free", "serper", "tavily"],
+        "privacy_note": "无需申请 key。只发送实体名与关系短语（不超过 60 字）到公开百科 / 搜索，不会上传原文全文；查不到就明确标注未核实。",
     }
 
 
@@ -542,8 +654,8 @@ def _overall(claims: list[dict[str, Any]], signals: list[dict[str, Any]], text_l
 # --------------------------------------------------------------------------- #
 
 
-def verify_text(text: str, use_external: bool = True) -> dict[str, Any]:
-    """对一段文字做完整甄别。同步纯计算（联网时是短超时请求），不写任何库。"""
+def verify_text(text: str, use_external: bool = False) -> dict[str, Any]:
+    """对一段文字做完整甄别。默认离线纯计算；联网是显式 opt-in，不写任何库。"""
     text = (text or "").strip()
     if not text:
         raise ValueError("文本内容为空")

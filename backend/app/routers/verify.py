@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/verify", tags=["信息甄别"])
 
 class VerifyRequest(BaseModel):
     text: str = Field(..., description="待甄别的网传消息文本")
-    use_external: bool = Field(default=True, description="是否允许调用已配置的外部检索 provider")
+    use_external: bool = Field(default=False, description="是否允许调用外部检索 provider（零 key 免费通道或已配置的付费 provider）")
 
 
 @router.post("", summary="甄别一段文字")

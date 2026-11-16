@@ -80,19 +80,23 @@ def test_no_signal_on_clean_news():
 # --------------------------------------------------------------------------- #
 
 
-def test_default_is_offline_no_request(monkeypatch):
+def test_no_key_uses_free_provider_and_offline_opt_in(monkeypatch):
+    """无 key 时 capability 报告零 key 免费通道可用；但默认不联网，勾选才联网。"""
     monkeypatch.delenv("VERIFY_PROVIDER", raising=False)
     monkeypatch.delenv("SERPER_API_KEY", raising=False)
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     caps = verify.capability()
-    assert caps["enabled"] is False
-    assert caps["provider"] == "none"
+    assert caps["enabled"] is True
+    assert caps["provider"] == "free"
+    assert "免费" in caps["provider_label"]
 
+    # 默认离线：即使免费通道可用，不显式请求就不发任何网络调用
     class Boom(verify.SearchProvider):
+        name = "free"
         def available(self):
-            return False  # 模拟离线：available 为假时 search 不该被调用
+            return True  # 假装可用，验证「available 为真」也不该被默认调用
         def search(self, query):
-            raise AssertionError("离线模式绝不能发起检索")
+            raise AssertionError("默认离线：未请求联网时绝不能发起检索")
 
     monkeypatch.setattr(verify, "build_provider", lambda: Boom())
     r = verify.verify_text("腾讯收购搜狗公司。")
@@ -132,7 +136,7 @@ def test_external_evidence_is_classified_and_refute_detected(monkeypatch):
             ]
 
     monkeypatch.setattr(verify, "build_provider", lambda: FakeProvider())
-    r = verify.verify_text("腾讯收购搜狗公司。")
+    r = verify.verify_text("腾讯收购搜狗公司。", use_external=True)
     checked = [c for c in r["claims"] if c["external"]["status"] == "checked"]
     assert checked
     ext = checked[0]["external"]
@@ -151,15 +155,20 @@ def test_provider_error_degrades_to_error_status(monkeypatch):
             raise RuntimeError("network down")
 
     monkeypatch.setattr(verify, "build_provider", lambda: FailingProvider())
-    r = verify.verify_text("腾讯收购搜狗公司。")
+    r = verify.verify_text("腾讯收购搜狗公司。", use_external=True)
     assert all(c["external"]["status"] == "error" for c in r["claims"])
 
 
-def test_provider_selection_off_and_explicit(monkeypatch):
+def test_provider_selection_off_free_and_explicit(monkeypatch):
     monkeypatch.setenv("VERIFY_PROVIDER", "off")
     assert verify.build_provider().name == "none"
-    monkeypatch.setenv("VERIFY_PROVIDER", "serper")
+    monkeypatch.setenv("VERIFY_PROVIDER", "free")
+    assert verify.build_provider().name == "free"
+    monkeypatch.setenv("VERIFY_PROVIDER", "auto")
     monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    assert verify.build_provider().name == "free"  # auto 无 key → 零 key 免费通道
+    monkeypatch.setenv("VERIFY_PROVIDER", "serper")
     assert verify.build_provider().name == "none"  # 选了但没 key → 降级
     monkeypatch.setenv("SERPER_API_KEY", "test-key")
     assert verify.build_provider().name == "serper"
@@ -192,6 +201,17 @@ def test_tavily_uses_bearer_auth_header(monkeypatch):
     assert headers["authorization"] == "Bearer tvly-test-key"
     assert "api_key" not in captured["body"]  # 不能再出现在 body 里
     assert "topic" in captured["body"] and '"news"' in captured["body"]
+
+
+def test_free_provider_is_zero_key_and_degrades_silently(monkeypatch):
+    """零 key 免费 provider 永远 available；两个来源都挂时返回空而非抛错。"""
+    def boom(*args, **kwargs):
+        raise RuntimeError("no network")
+
+    monkeypatch.setattr(verify.urllib.request, "urlopen", boom)
+    p = verify.FreeProvider()
+    assert p.available() is True
+    assert p.search("腾讯 收购 搜狗") == []
 
 
 # --------------------------------------------------------------------------- #
@@ -244,7 +264,8 @@ def test_verify_api_bad_request(client):
 
 def test_capability_and_examples_api(client):
     caps = client.get("/api/verify/capability").json()
-    assert caps["enabled"] is False  # 测试环境无 key
+    assert caps["enabled"] is True  # 零 key 免费通道默认可用
+    assert caps["provider"] == "free"
     assert "privacy_note" in caps
     exs = client.get("/api/verify/examples").json()
     assert len(exs) >= 3
