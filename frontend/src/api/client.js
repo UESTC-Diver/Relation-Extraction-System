@@ -170,6 +170,10 @@ export const getReviewSnapshots = (id) => http.get(`/records/${id}/review/snapsh
 export const createShareLink = (recordId, ttlSeconds = 7 * 24 * 3600) =>
   http.post('/report/share', { record_id: recordId, ttl_seconds: ttlSeconds })
 
+/* ---------- 规则反推：从标注集的补录挖候选触发词 ---------- */
+// 只读接口。候选要生效必须走 trialRules + applyRules，不在这里另开写路径。
+export const getMiningTriggers = (params = {}) => http.get('/mining/triggers', { params })
+
 /* ---------- 案卷：材料归档、直接结论、推断关联与疑点 ---------- */
 export const getDossiers = () => http.get('/dossiers')
 export const createDossier = (payload) => http.post('/dossiers', payload)

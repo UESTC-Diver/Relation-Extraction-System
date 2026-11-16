@@ -10,7 +10,7 @@
     <template #header>
       <div class="rl-head">
         <span class="rl-title">规则实验室</span>
-        <span class="rl-sub">先看哪些规则在干活，再改触发词，最后用 A/B 差异确认</span>
+        <span class="rl-sub">先看哪些规则在干活，再从标注里学新说法，最后用 A/B 差异确认</span>
       </div>
     </template>
 
@@ -117,7 +117,7 @@
     </div>
 
     <!-- ============ 规则体检 ============ -->
-    <div v-else class="rl-insights" role="tabpanel" :aria-labelledby="'rl-tab-insights'">
+    <div v-else-if="mode === 'insights'" class="rl-insights" role="tabpanel" :aria-labelledby="'rl-tab-insights'">
       <p v-if="insightsError" class="rl-error" role="alert">{{ insightsError }}</p>
       <div v-else-if="!insights" class="rl-empty">正在读取历史抽取结果…</div>
       <template v-else>
@@ -179,8 +179,66 @@
       </template>
     </div>
 
+    <!-- ============ 学规则 ============ -->
+    <div v-else-if="mode === 'mining'" class="rl-mining" role="tabpanel" :aria-labelledby="'rl-tab-mining'">
+      <p class="rl-hint rl-mining-intro">
+        只读「人工补录 + 判为该抽」的项：取补录原句里两个实体夹住的文字，反复出现的片段就是最可能的触发词。
+        标「已自证」的，是加进配置后确实能抽出那条对应的关系。
+      </p>
+
+      <p v-if="miningError" class="rl-error" role="alert">{{ miningError }}</p>
+      <div v-else-if="!mining" class="rl-empty">正在从标注集反推…</div>
+      <template v-else>
+        <div class="rl-summary">
+          <div v-for="m in miningCards" :key="m.label" class="rl-summary-item">
+            <b>{{ m.value }}</b>
+            <span>{{ m.label }}</span>
+          </div>
+        </div>
+
+        <div v-if="mining.advice?.length" class="rl-suggestions">
+          <div v-for="a in mining.advice" :key="a.kind + a.title" class="rl-suggestion" :class="'is-' + a.kind">
+            <div class="rl-suggestion-copy">
+              <b>{{ a.title }}</b>
+              <p>{{ a.detail }}</p>
+            </div>
+          </div>
+        </div>
+
+        <h4>候选触发词 <span class="rl-h4-note">点一下带进试跑</span></h4>
+        <div v-if="mining.candidates.length" class="rl-cands">
+          <div v-for="c in mining.candidates" :key="c.relation + c.trigger" class="rl-cand">
+            <div class="rl-cand-head">
+              <b>{{ c.trigger }}</b>
+              <span class="rl-cand-rel">{{ c.relation_label }}</span>
+              <span class="rl-cand-tag" :class="c.verified ? 'is-ok' : 'is-warn'">
+                {{ c.verified ? '已自证' : (c.already_hit ? '现有配置已能抽到' : '未自证') }}
+              </span>
+              <span class="rl-cand-meta">{{ c.count }} 条补录 · {{ c.records }} 篇材料</span>
+              <button type="button" class="rl-suggestion-btn" @click="useMining(c)">带去试跑 →</button>
+            </div>
+            <p v-if="c.examples[0]" class="rl-cand-eg">{{ c.examples[0].sentence }}</p>
+            <p v-if="c.conflicts.length" class="rl-cand-warn">
+              「{{ c.trigger }}」目前已属于「{{ c.conflicts.map((k) => relationLabel(k)).join(' / ') }}」，加进来会跟它抢同一句话。
+            </p>
+          </div>
+        </div>
+        <p v-else class="rl-hint">还没有重复出现的说法。补录几条同类句式再看。</p>
+
+        <div v-if="mining.overbroad?.length" class="rl-deleted">
+          <h4>误抽信号 <span class="rl-h4-note">这些词抽出来的关系被判为不该抽</span></h4>
+          <span v-for="(o, i) in mining.overbroad" :key="i" class="rl-chip">
+            {{ o.trigger }} <i>{{ o.relation_label }}</i> · 否掉 {{ o.rejected }} 次
+          </span>
+        </div>
+      </template>
+    </div>
+
     <template #footer>
       <button v-if="mode === 'insights'" class="rl-refresh" type="button" @click="loadInsights">重新体检</button>
+      <button v-else-if="mode === 'mining'" class="rl-refresh" type="button" :disabled="miningLoading" @click="loadMining">
+        {{ miningLoading ? '正在反推…' : '重新反推' }}
+      </button>
       <el-button @click="emit('update:modelValue', false)">关闭</el-button>
     </template>
   </el-dialog>
@@ -200,6 +258,7 @@ const emit = defineEmits(['update:modelValue', 'changed'])
 const MODES = [
   { key: 'trial', label: 'A/B 试跑' },
   { key: 'insights', label: '规则体检' },
+  { key: 'mining', label: '学规则' },
 ]
 const mode = ref('trial')
 
@@ -217,6 +276,10 @@ const activeProfile = computed(() => profiles.value.find((p) => p.key === profil
 
 const insights = ref(null)
 const insightsError = ref('')
+
+const mining = ref(null)
+const miningError = ref('')
+const miningLoading = ref(false)
 
 const relationTypes = computed(() => props.schema.relation_types || [])
 const relationLabel = (key) => relationTypes.value.find((r) => r.key === key)?.label || key
@@ -275,12 +338,14 @@ function onTabKeydown(event) {
 function switchMode(key) {
   mode.value = key
   if (key === 'insights') loadInsights()
+  if (key === 'mining' && !mining.value) loadMining()
 }
 
 async function onOpen() {
   if (!profiles.value.length) profiles.value = props.schema.profiles || []
   await Promise.all([loadVersions(), loadProfiles()])
   if (mode.value === 'insights') await loadInsights()
+  if (mode.value === 'mining' && !mining.value) await loadMining()
 }
 
 async function loadProfiles() {
@@ -301,6 +366,41 @@ async function loadInsights() {
     insightsError.value = `体检结果读取失败：${err.message}`
   }
 }
+
+async function loadMining() {
+  if (miningLoading.value) return
+  miningError.value = ''
+  miningLoading.value = true
+  try {
+    mining.value = await api.getMiningTriggers()
+  } catch (err) {
+    miningError.value = `反推失败：${err.message}`
+  } finally {
+    miningLoading.value = false
+  }
+}
+
+/** 把候选直接放进试跑候选列表：反推的下一步永远是用 A/B 差异验一遍。 */
+function useMining(item) {
+  newKey.value = item.relation
+  newTrigger.value = item.trigger
+  if (!candidates.value.some((c) => c.relation_key === item.relation && c.trigger === item.trigger)) {
+    candidates.value.push({ relation_key: item.relation, trigger: item.trigger })
+  }
+  mode.value = 'trial'
+  ElMessage.info(`已带入候选「${item.trigger}」，换一段同时含该说法的文本再试跑`)
+}
+
+const miningCards = computed(() => {
+  const s = mining.value?.summary || {}
+  return [
+    { label: '人工补录', value: s.manual_total ?? 0 },
+    { label: '可定位原句', value: s.usable_samples ?? 0 },
+    { label: '候选触发词', value: s.candidates ?? 0 },
+    { label: '已自证', value: s.verified ?? 0 },
+    { label: '误抽信号', value: s.overbroad ?? 0 },
+  ]
+})
 
 function useUnused(item) {
   newKey.value = item.relation
@@ -425,6 +525,14 @@ async function restore(id) {
 .rl-tab.is-active { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(32, 30, 25, 0.1); }
 .rl-tab-count { margin-left: 6px; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
+/* 960 的固定宽在窄屏会整块出屏；max-width 能压过 width 内联样式。 */
+:global(.rl-dialog.el-dialog) {
+  max-width: calc(100vw - 24px);
+}
+:global(.rl-dialog .el-dialog__body) {
+  max-height: 68vh;
+  overflow-y: auto;
+}
 .rl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .rl-left, .rl-right { padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
 .rl-grid h4, .rl-versions h4, .rl-insights h4, .rl-deleted h4 { margin: 0 0 8px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); }
@@ -491,10 +599,30 @@ async function restore(id) {
 .rl-deleted .rl-chip { display: inline-block; margin: 0 6px 6px 0; }
 .rl-refresh { margin-right: 10px; padding: 5px 10px; border: 1px solid var(--line-strong); border-radius: var(--r-xs); background: var(--surface); color: var(--ink-2); font-family: inherit; font-size: 12px; cursor: pointer; }
 .rl-refresh:hover { color: var(--brand-red); }
+.rl-refresh:disabled { color: var(--muted); cursor: default; }
+.rl-mining-intro { margin: 0 0 14px; }
+.rl-cands { display: grid; gap: 8px; }
+.rl-cand { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-2); }
+.rl-cand-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.rl-cand-head b { flex: none; font-size: 13px; font-weight: 600; color: var(--ink); }
+.rl-cand-rel { padding: 1px 6px; font-size: 10.5px; color: var(--ink-2); border: 1px solid var(--line-strong); border-radius: var(--r-xs); }
+.rl-cand-tag { padding: 1px 6px; font-size: 10.5px; border: 1px solid var(--line-strong); border-radius: var(--r-xs); }
+.rl-cand-tag.is-ok { color: var(--ok); }
+.rl-cand-tag.is-warn { color: var(--muted); }
+.rl-cand-meta { margin-left: auto; font-size: 10.5px; color: var(--muted); }
+.rl-cand-eg { margin: 7px 0 0; font-size: 11px; line-height: 1.6; color: var(--ink-2); }
+.rl-cand-warn { margin: 6px 0 0; font-size: 10.5px; line-height: 1.6; color: var(--warn); }
 
 @media (max-width: 720px) {
   .rl-dialog { width: 94vw !important; }
   .rl-grid, .rl-suggestions { grid-template-columns: 1fr; }
-  .rl-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  /* 一行塞不下时让统计数另起一行，按钮留在第一行右侧，别互相挤 */
+  .rl-cand-meta { margin-left: 0; width: 100%; order: 9; }
+  .rl-cand-head .rl-suggestion-btn { margin-left: auto; }
+  /* 5 个指标排 2 列，最后一张占满整行，不留空格 */
+  .rl-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rl-summary-item:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  /* 弹窗顶距 + 内容 + 页脚在 390 高屏上会超出视口，内容区再收一点 */
+  :global(.rl-dialog .el-dialog__body) { max-height: 58vh; }
 }
 </style>
