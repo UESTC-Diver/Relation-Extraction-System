@@ -69,16 +69,25 @@ def _triple(row: dict) -> tuple[str, str, str]:
 def evaluate(
     cases: list[dict],
     analyzer: Callable[[str], dict] | None = None,
+    pred_scope: dict[str, set] | None = None,
 ) -> dict:
-    """对一组金标准用例跑流水线，返回整体 / 分类型指标与漏抽误抽明细。"""
+    """对一组金标准用例跑流水线，返回整体 / 分类型指标与漏抽误抽明细。
+
+    pred_scope 用来算「已标注范围内」的口径：给出每个用例里人类已经判过的
+    三元组集合，只有落在集合里的预测才计入 FP。标注没做完时，严格口径会把
+    「没判过的」一律当误抽，P 会被系统性低估；两种口径一起给，才不至于
+    用单一数字骗自己。
+    """
     run_analyze = analyzer or analyze
     total_tp = total_fp = total_fn = 0
     per_case: list[dict] = []
     per_rel: dict[str, dict] = defaultdict(lambda: {"gold": 0, "pred": 0, "tp": 0})
     misses: list[dict] = []
     spurious: list[dict] = []
+    skipped = 0
 
     for index, case in enumerate(cases):
+        case_id = case.get("id") or f"case-{index + 1}"
         text = str(case.get("text") or "")
         gold = {
             _triple({"head": h, "relation": rel, "tail": t})
@@ -86,6 +95,12 @@ def evaluate(
         }
         predicted = run_analyze(text)["relations"] if text.strip() else []
         pred = {_triple(r) for r in predicted}
+        if pred_scope is not None:
+            scope = pred_scope.get(case_id)
+            if scope is not None:
+                kept = {p for p in pred if p in scope}
+                skipped += len(pred) - len(kept)
+                pred = kept
 
         tp, _, fn, fp = align(gold, pred)
         total_tp += len(tp)
@@ -99,7 +114,6 @@ def evaluate(
         for _, rel, _ in tp:
             per_rel[rel]["tp"] += 1
 
-        case_id = case.get("id") or f"case-{index + 1}"
         evidence = {
             _triple(r): r.get("evidence", "") for r in predicted
         }
@@ -143,6 +157,8 @@ def evaluate(
 
     return {
         "cases": len(cases),
+        "scoped": pred_scope is not None,
+        "skipped_unjudged": skipped,
         "gold_total": total_tp + total_fn,
         "pred_total": total_tp + total_fp,
         "tp": total_tp, "fp": total_fp, "fn": total_fn,

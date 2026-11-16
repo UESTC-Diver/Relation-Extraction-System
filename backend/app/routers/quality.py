@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import db, insights, store
+from .. import annotation_store, db, insights, store
 from ..nlp.entity import canonical_name
 from ..nlp.evaluation import evaluate, load_gold
 from ..nlp.lexicon import ENTITY_TYPES, RELATION_MAP, apply_custom_triggers
@@ -25,6 +25,7 @@ _trial_lock = threading.Lock()
 
 class EvalRequest(BaseModel):
     cases: list[dict] | None = Field(default=None, description="自定义金标准；留空用内置 eval/gold.json")
+    set_id: int | None = Field(default=None, description="用自己的标注集评测；与 cases 互斥，优先级更高")
     save: bool = Field(default=True, description="是否留一条回归历史")
 
 
@@ -84,6 +85,8 @@ def eval_gold() -> dict:
 
 @router.post("/eval", summary="跑一次 P/R/F1 评测并保存回归历史")
 def run_eval(payload: EvalRequest) -> dict:
+    if payload.set_id is not None:
+        return _run_annotation_eval(payload)
     try:
         cases = payload.cases if payload.cases is not None else load_gold()
     except (OSError, ValueError) as err:
@@ -94,6 +97,43 @@ def run_eval(payload: EvalRequest) -> dict:
         raise HTTPException(status_code=413, detail="单次评测最多 100 条用例")
 
     report = evaluate(cases)
+    report["dataset"] = "builtin"
+    report["coverage"] = 1.0
+    run_id = store.save_eval_run(report) if payload.save else None
+    return {"run_id": run_id, "report": report}
+
+
+def _run_annotation_eval(payload: EvalRequest) -> dict:
+    """用自己的标注集评测：同时给「已判定范围」与「未判视为漏抽」两个口径。
+
+    主指标用前者，因为人还没判到的条目不能算系统错；后者作为下界一起显示，
+    免得标注做到一半就拿一个偏高的数字当结论。
+    """
+    data = annotation_store.get_set(payload.set_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="标注集不存在")
+    cov = annotation_store.coverage(payload.set_id) or {}
+    if not cov.get("ready"):
+        raise HTTPException(
+            status_code=400,
+            detail="这个标注集还没有任何「该抽」的判定，先标几条再评测",
+        )
+    cases, scope = annotation_store.gold_cases(payload.set_id)
+    if not cases:
+        raise HTTPException(status_code=400, detail="标注集里没有可用的材料")
+    if len(cases) > 100:
+        raise HTTPException(status_code=413, detail="单次评测最多 100 条材料")
+
+    scoped = evaluate(cases, pred_scope=scope)
+    strict = evaluate(cases)
+    report = {
+        **scoped,
+        "dataset": f"annotation:{payload.set_id}",
+        "dataset_name": data["name"],
+        "coverage": cov.get("coverage", 0.0),
+        "strict": strict,
+        "coverage_detail": cov,
+    }
     run_id = store.save_eval_run(report) if payload.save else None
     return {"run_id": run_id, "report": report}
 

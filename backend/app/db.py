@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS eval_runs (
     recall      REAL    NOT NULL DEFAULT 0,
     f1          REAL    NOT NULL DEFAULT 0,
     macro_f1    REAL    NOT NULL DEFAULT 0,
+    dataset     TEXT    NOT NULL DEFAULT 'builtin',
+    coverage    REAL    NOT NULL DEFAULT 1.0,
     report_json TEXT    NOT NULL DEFAULT '{}'
 );
 
@@ -175,6 +177,44 @@ CREATE TABLE IF NOT EXISTS relation_deletions (
     created_at     TEXT    NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_deletions_relation ON relation_deletions (relation);
+
+-- 金标准标注：把「这套规则准不准」从内置集的演示数字，变成能在自己的材料上
+-- 复现的结论。一个标注集对应一批材料（现实里就是一个案卷），标注本身挂在
+-- 记录上而不是集上——同一份材料被多个案卷复用时，不该重复标第二遍。
+CREATE TABLE IF NOT EXISTS annotation_sets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    note       TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS annotation_set_records (
+    set_id    INTEGER NOT NULL,
+    record_id INTEGER NOT NULL,
+    PRIMARY KEY (set_id, record_id)
+);
+
+-- 一条标注 = 对「某个头实体 + 某类关系 + 某个尾实体」的判断。
+-- 没有行就是未判：不用 pending 值，避免「判过但选了未判」与「从没判过」混淆。
+-- origin=manual 表示系统没抽出来、由人补录，它和自动命中项在 gold 里同权。
+CREATE TABLE IF NOT EXISTS annotations (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id      INTEGER NOT NULL,
+    relation_key   TEXT    NOT NULL,
+    verdict        TEXT    NOT NULL,
+    origin         TEXT    NOT NULL DEFAULT 'auto',
+    source         TEXT    NOT NULL DEFAULT 'human',
+    head           TEXT    NOT NULL DEFAULT '',
+    relation       TEXT    NOT NULL,
+    tail           TEXT    NOT NULL DEFAULT '',
+    sentence_index INTEGER NOT NULL DEFAULT -1,
+    evidence       TEXT    NOT NULL DEFAULT '',
+    note           TEXT    NOT NULL DEFAULT '',
+    created_at     TEXT    NOT NULL,
+    UNIQUE (record_id, relation_key)
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_record ON annotations (record_id);
+CREATE INDEX IF NOT EXISTS idx_annotations_verdict ON annotations (verdict);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
@@ -390,6 +430,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     # 领域包记录在抽取当时用的那一份，历史记录与离线报告才能说明「用什么抽的」。
     if "profile" not in record_cols:
         conn.execute("ALTER TABLE records ADD COLUMN profile TEXT NOT NULL DEFAULT 'general'")
+
+    # 评测历史要能区分「内置集」与「自己的标注集」，否则两条曲线混在一张图上
+    # 完全没有可比性；coverage 记下当时标注完整度，避免拿 30% 标注的成绩
+    # 和 100% 标注的成绩直接比高低。
+    eval_cols = {row["name"] for row in conn.execute("PRAGMA table_info(eval_runs)")}
+    if "dataset" not in eval_cols:
+        conn.execute("ALTER TABLE eval_runs ADD COLUMN dataset TEXT NOT NULL DEFAULT 'builtin'")
+    if "coverage" not in eval_cols:
+        conn.execute("ALTER TABLE eval_runs ADD COLUMN coverage REAL NOT NULL DEFAULT 1.0")
 
 
 def init_db() -> None:
@@ -704,6 +753,8 @@ def delete_record(record_id: int) -> bool:
         conn.execute("DELETE FROM review_decisions WHERE record_id = ?", (record_id,))
         conn.execute("DELETE FROM review_snapshots WHERE record_id = ?", (record_id,))
         conn.execute("DELETE FROM relation_deletions WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM annotations WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM annotation_set_records WHERE record_id = ?", (record_id,))
         cur = conn.execute("DELETE FROM records WHERE id = ?", (record_id,))
         if cur.rowcount > 0 and totals:
             _bump_counters(
@@ -723,6 +774,8 @@ def clear_records() -> int:
         conn.execute("DELETE FROM review_decisions")
         conn.execute("DELETE FROM review_snapshots")
         conn.execute("DELETE FROM relation_deletions")
+        conn.execute("DELETE FROM annotations")
+        conn.execute("DELETE FROM annotation_set_records")
         cur = conn.execute("DELETE FROM records")
         conn.execute(
             """UPDATE counters SET records = 0, chars = 0, entities = 0,

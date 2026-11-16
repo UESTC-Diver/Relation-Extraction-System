@@ -76,6 +76,10 @@
           </button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item command="annotate">
+                <span class="exp-label">金标准标注</span>
+                <span class="exp-hint">判该抽 / 不该抽、补漏抽，算出自己材料上的 F1</span>
+              </el-dropdown-item>
               <el-dropdown-item command="eval">
                 <span class="exp-label">效果评测台</span>
                 <span class="exp-hint">跑 P / R / F1，看漏抽误抽与回归曲线</span>
@@ -398,6 +402,12 @@
       @focus="onKnowledgeFocus"
     />
     <EvalDialog v-model="evalOpen" />
+    <AnnotationDialog
+      v-model="annotationOpen"
+      :record-id="activeRecordId"
+      :relation-types="schema.relation_types || []"
+      @saved="refreshStats"
+    />
     <RulesLabDialog v-model="rulesOpen" :schema="schema" @changed="refreshStats" />
     <EntityFixDialog
       v-model="entityFixOpen"
@@ -451,6 +461,7 @@ const StatsOverview = defineAsyncComponent(() => import('./components/StatsOverv
 const HistoryDrawer = defineAsyncComponent(() => import('./components/HistoryDrawer.vue'))
 const BatchDialog = defineAsyncComponent(() => import('./components/BatchDialog.vue'))
 const KnowledgeDialog = defineAsyncComponent(() => import('./components/KnowledgeDialog.vue'))
+const AnnotationDialog = defineAsyncComponent(() => import('./components/AnnotationDialog.vue'))
 const EvalDialog = defineAsyncComponent(() => import('./components/EvalDialog.vue'))
 const RulesLabDialog = defineAsyncComponent(() => import('./components/RulesLabDialog.vue'))
 const EntityFixDialog = defineAsyncComponent(() => import('./components/EntityFixDialog.vue'))
@@ -531,6 +542,7 @@ const graphRef = ref(null)
 const batchOpen = ref(false)
 const knowledgeOpen = ref(false)
 const evalOpen = ref(false)
+const annotationOpen = ref(false)
 const rulesOpen = ref(false)
 const entityFixOpen = ref(false)
 const reviewOpen = ref(false)
@@ -980,6 +992,7 @@ async function refreshReview() {
 watch(activeRecordId, refreshReview, { immediate: true })
 
 async function onMoreCommand(command) {
+  if (command === 'annotate') annotationOpen.value = true
   if (command === 'eval') evalOpen.value = true
   if (command === 'rules') rulesOpen.value = true
   if (command === 'import') projectInput.value?.click()

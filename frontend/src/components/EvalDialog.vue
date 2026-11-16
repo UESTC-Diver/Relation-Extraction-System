@@ -15,12 +15,30 @@
     </template>
 
     <div class="ev-bar">
-      <span class="ev-muted">内置金标准 {{ goldTotal }} 条用例</span>
+      <el-select v-model="datasetKey" class="ev-select" aria-label="选择评测数据集" @change="onDataset">
+        <el-option label="内置金标准集" value="builtin" />
+        <el-option
+          v-for="s in datasets"
+          :key="s.id"
+          :label="`我的标注：${s.name}`"
+          :value="`annotation:${s.id}`"
+        />
+      </el-select>
+      <span class="ev-muted">{{ datasetHint }}</span>
       <el-button type="primary" :loading="running" @click="run">运行评测</el-button>
       <el-button @click="loadHistory">刷新历史</el-button>
     </div>
 
     <div v-if="report" class="ev-pane">
+      <div v-if="report.coverage < 1" class="ev-scope">
+        <b>标注完整度 {{ Math.round(report.coverage * 100) }}%</b>
+        <span>
+          已判定范围内 P {{ report.precision }} · R {{ report.recall }} · F1 {{ report.f1 }}
+        </span>
+        <span v-if="report.strict">
+          若把未判视为漏抽，下界 P {{ report.strict.precision }} · F1 {{ report.strict.f1 }}
+        </span>
+      </div>
       <div class="ev-cards">
         <div v-for="c in cards" :key="c.label" class="ev-card">
           <b>{{ c.value }}</b><span>{{ c.label }}</span>
@@ -28,8 +46,8 @@
       </div>
 
       <div class="ev-history">
-        <h4>F1 回归曲线（最近 {{ runs.length }} 次）</h4>
-        <svg v-if="runs.length > 1" viewBox="0 0 620 92" class="ev-spark" role="img" aria-label="F1 历史变化">
+        <h4>F1 回归曲线（本数据集最近 {{ scopedRuns.length }} 次）</h4>
+        <svg v-if="scopedRuns.length > 1" viewBox="0 0 620 92" class="ev-spark" role="img" aria-label="F1 历史变化">
           <polyline :points="sparkPoints" fill="none" stroke="#a8322a" stroke-width="2" />
           <circle v-for="(p, i) in sparkDots" :key="i" :cx="p.x" :cy="p.y" r="3" fill="#a8322a" />
         </svg>
@@ -81,8 +99,9 @@
 
       <div v-if="showHistory" class="ev-runs">
         <h4>历史评测</h4>
-        <button v-for="r in runs" :key="r.id" class="ev-run" type="button" @click="openRun(r.id)">
+        <button v-for="r in scopedRuns" :key="r.id" class="ev-run" type="button" @click="openRun(r.id)">
           #{{ r.id }} · {{ r.created_at }} · F1 {{ r.f1 }} · P {{ r.precision }} · R {{ r.recall }}
+          <span v-if="r.coverage < 1" class="ev-run-cov">完整度 {{ Math.round(r.coverage * 100) }}%</span>
         </button>
       </div>
     </div>
@@ -105,9 +124,22 @@ const emit = defineEmits(['update:modelValue'])
 const goldTotal = ref(0)
 const report = ref(null)
 const runs = ref([])
+const datasets = ref([])
+const datasetKey = ref('builtin')
 const running = ref(false)
 const errorTab = ref('misses')
 const showHistory = ref(false)
+
+const datasetHint = computed(() => {
+  if (datasetKey.value === 'builtin') return `内置金标准 ${goldTotal.value} 条用例`
+  const one = datasets.value.find((d) => `annotation:${d.id}` === datasetKey.value)
+  return one ? `${one.record_count} 篇材料 · 先判完再跑才有意义` : '这个标注集已不存在'
+})
+
+// 两条曲线混在一起没有可比性：内置集和自己的材料，口径本来就不一样
+const scopedRuns = computed(() =>
+  runs.value.filter((r) => (r.dataset || 'builtin') === datasetKey.value),
+)
 
 const cards = computed(() => {
   const r = report.value
@@ -125,7 +157,7 @@ const errorRows = computed(() =>
 )
 
 const sparkDots = computed(() => {
-  const values = [...runs.value].reverse().map((r) => r.f1)
+  const values = [...scopedRuns.value].reverse().map((r) => r.f1)
   if (values.length < 2) return []
   const min = Math.min(...values, 0)
   const max = Math.max(...values, 1)
@@ -139,21 +171,39 @@ const sparkPoints = computed(() => sparkDots.value.map((p) => `${p.x},${p.y}`).j
 
 async function loadAll() {
   try {
-    const [gold, history] = await Promise.all([api.getEvalGold(), api.getEvalRuns()])
+    const [gold, history, sets] = await Promise.all([
+      api.getEvalGold(),
+      api.getEvalRuns(),
+      api.getAnnotationSets(),
+    ])
     goldTotal.value = gold.total
     runs.value = history.items
+    datasets.value = sets.items
+    if (datasetKey.value !== 'builtin') {
+      const alive = sets.items.some((s) => `annotation:${s.id}` === datasetKey.value)
+      if (!alive) datasetKey.value = 'builtin'
+    }
   } catch (err) {
     ElMessage.error(`加载失败：${err.message}`)
   }
 }
 
+function onDataset() {
+  report.value = null
+}
+
 async function run() {
   running.value = true
   try {
-    const res = await api.runEval({ save: true })
+    const payload = { save: true }
+    if (datasetKey.value !== 'builtin') {
+      payload.set_id = Number(datasetKey.value.split(':')[1])
+    }
+    const res = await api.runEval(payload)
     report.value = res.report
     runs.value = (await api.getEvalRuns()).items
-    ElMessage.success(`评测完成：F1 ${res.report.f1}`)
+    const tail = res.report.coverage < 1 ? `（标注完整度 ${Math.round(res.report.coverage * 100)}%）` : ''
+    ElMessage.success(`评测完成：F1 ${res.report.f1}${tail}`)
   } catch (err) {
     ElMessage.error(`评测失败：${err.message}`)
   } finally {
@@ -173,6 +223,7 @@ async function openRun(id) {
   try {
     const detail = await api.getEvalRun(id)
     report.value = detail.report
+    datasetKey.value = detail.dataset || 'builtin'
     ElMessage.success(`已载入 #${id} 的评测结果`)
   } catch (err) {
     ElMessage.error(err.message)
@@ -186,8 +237,16 @@ watch(() => report.value, () => { errorTab.value = 'misses' })
 .ev-head { display: flex; align-items: baseline; gap: 10px; }
 .ev-title { font-size: 13.5px; font-weight: 600; color: var(--ink); }
 .ev-sub, .ev-muted { font-size: 11.5px; color: var(--muted); }
-.ev-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.ev-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.ev-select { width: 220px; }
 .ev-bar .ev-muted { margin-right: auto; }
+.ev-scope {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 9px 11px; margin-bottom: 12px; font-size: 11.5px; color: var(--ink-2);
+  background: var(--surface-2); border-left: 2px solid var(--brand-red); border-radius: var(--r-xs);
+}
+.ev-scope b { font-weight: 500; color: var(--brand-red); }
+.ev-run-cov { margin-left: 6px; color: var(--muted); }
 .ev-cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
 .ev-card { padding: 12px; background: var(--surface-2); }
 .ev-card b { display: block; font-size: 19px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -219,6 +278,14 @@ watch(() => report.value, () => { errorTab.value = 'misses' })
 .ev-run:hover { background: var(--surface-3); }
 .ev-empty { padding: 40px 16px; text-align: center; font-size: 12px; color: var(--muted); }
 .ev-empty code { font-family: var(--font-mono, monospace); color: var(--ink-2); }
+:global(.ev-dialog.el-dialog) {
+  max-width: calc(100vw - 24px);
+}
+:global(.ev-dialog .el-dialog__body) {
+  max-height: 72vh;
+  overflow: auto;
+}
+
 @media (max-width: 720px) {
   .ev-cards { grid-template-columns: repeat(2, 1fr); }
   .ev-columns { grid-template-columns: 1fr; }

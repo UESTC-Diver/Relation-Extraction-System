@@ -122,6 +122,21 @@ export const getEvalGold = () => http.get('/eval/gold')
 export const runEval = (payload = {}) => http.post('/eval', payload)
 export const getEvalRuns = () => http.get('/eval/runs')
 export const getEvalRun = (id) => http.get(`/eval/runs/${id}`)
+
+// 标注：把「规则准不准」变成能在自己材料上复现的结论
+export const getAnnotationSets = () => http.get('/annotation/sets')
+export const createAnnotationSet = (payload) => http.post('/annotation/sets', payload)
+export const getAnnotationSet = (id) => http.get(`/annotation/sets/${id}`)
+export const deleteAnnotationSet = (id) => http.delete(`/annotation/sets/${id}`)
+export const addAnnotationRecords = (id, recordIds) =>
+  http.post(`/annotation/sets/${id}/records`, { record_ids: recordIds })
+export const removeAnnotationRecords = (id, recordIds) =>
+  http.delete(`/annotation/sets/${id}/records`, { data: { record_ids: recordIds } })
+export const getAnnotationCoverage = (id) => http.get(`/annotation/sets/${id}/coverage`)
+export const getRecordAnnotation = (recordId) => http.get(`/annotation/records/${recordId}`)
+export const saveRecordAnnotation = (recordId, items) =>
+  http.put(`/annotation/records/${recordId}`, { items })
+export const clearRecordAnnotation = (recordId) => http.delete(`/annotation/records/${recordId}`)
 export const trialRules = (payload) => http.post('/rules/trial', payload)
 export const getInsights = () => http.get('/insights')
 export const getProfiles = () => http.get('/profiles')

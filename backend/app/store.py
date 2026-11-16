@@ -254,13 +254,16 @@ def save_eval_run(report: dict) -> int:
     with db.connect() as conn:
         cur = conn.execute(
             """INSERT INTO eval_runs (created_at, cases, tp, fp, fn,
-                                      precision, recall, f1, macro_f1, report_json)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                      precision, recall, f1, macro_f1,
+                                      dataset, coverage, report_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 _now(), report.get("cases", 0), report.get("tp", 0),
                 report.get("fp", 0), report.get("fn", 0),
                 report.get("precision", 0), report.get("recall", 0),
                 report.get("f1", 0), report.get("macro_f1", 0),
+                str(report.get("dataset") or "builtin")[:60],
+                round(float(report.get("coverage") or 1.0), 3),
                 json.dumps(report, ensure_ascii=False),
             ),
         )
@@ -273,6 +276,7 @@ def _eval_row(row, full: bool = False) -> dict[str, Any]:
         "tp": row["tp"], "fp": row["fp"], "fn": row["fn"],
         "precision": row["precision"], "recall": row["recall"],
         "f1": row["f1"], "macro_f1": row["macro_f1"],
+        "dataset": row["dataset"], "coverage": row["coverage"],
     }
     if full:
         data["report"] = json.loads(row["report_json"] or "{}")

@@ -440,10 +440,13 @@ async def extract_batch_files(
 
 @router.get("/health", summary="健康检查")
 def health() -> dict:
+    # 延迟取版本号：版本只在 main 里定义一处，避免两处硬编码各改一半。
+    from ..main import VERSION
+
     return {
         "status": "ok",
         "engine": "rule-based-cn-nlp",
-        "version": "1.5.0",
+        "version": VERSION,
         "relation_types": len(RELATION_RULES),
         "profiles": domain_profiles.valid_keys(),
         "custom_terms": len(db.list_custom_terms()),

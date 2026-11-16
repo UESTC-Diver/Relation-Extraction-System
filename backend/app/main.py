@@ -24,10 +24,20 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from . import db, security, store
 from .nlp.tokenizer import warmup
-from .routers import delivery, dictionary, extract, knowledge, meta, quality, review, rules
+from .routers import (
+    annotation,
+    delivery,
+    dictionary,
+    extract,
+    knowledge,
+    meta,
+    quality,
+    review,
+    rules,
+)
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 
 
 @asynccontextmanager
@@ -139,6 +149,7 @@ app.include_router(rules.router)
 app.include_router(knowledge.router)
 app.include_router(quality.router)
 app.include_router(review.router)
+app.include_router(annotation.router)
 # delivery 里含 /report/{id} 独立只读页，必须注册在 SPA catch-all 之前
 app.include_router(delivery.router)
 
