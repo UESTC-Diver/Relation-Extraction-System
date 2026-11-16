@@ -442,6 +442,7 @@ async def extract_batch_files(
 def health() -> dict:
     # 延迟取版本号：版本只在 main 里定义一处，避免两处硬编码各改一半。
     from ..main import VERSION
+    from ..verify import capability
 
     return {
         "status": "ok",
@@ -455,4 +456,5 @@ def health() -> dict:
         "db_size_bytes": db.db_size_bytes(),
         "max_concurrent_extract": MAX_CONCURRENT_EXTRACT,
         "full_text_search": db.fts_enabled(),
+        "verify_external": capability()["enabled"],
     }

@@ -5,6 +5,8 @@
 
   <DossierPage v-else-if="page === 'cases'" />
 
+  <VerifyPage v-else-if="page === 'verify'" />
+
   <div v-else-if="page === 'missing'" class="missing" role="main">
     <p class="missing-code">404</p>
     <h1 class="missing-title">这一页不存在</h1>
@@ -81,6 +83,10 @@
               <el-dropdown-item command="cases">
                 <span class="exp-label">尽调案卷</span>
                 <span class="exp-hint">多份材料归档成一个标的的关联方核查档案</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="verify">
+                <span class="exp-label">信息甄别</span>
+                <span class="exp-hint">网传消息分层核查，标出可疑措辞与证据线索</span>
               </el-dropdown-item>
               <el-dropdown-item command="annotate">
                 <span class="exp-label">金标准标注</span>
@@ -477,6 +483,8 @@ const ReviewDialog = defineAsyncComponent(() => import('./components/ReviewDialo
 const DemoSandbox = defineAsyncComponent(() => import('./components/DemoSandbox.vue'))
 // 案卷页同样是独立整页：材料多、推断链长，塞进工作台的弹窗会把两者都挤变形。
 const DossierPage = defineAsyncComponent(() => import('./components/DossierPage.vue'))
+// 信息甄别是面向日常场景的独立整页，只在访问 /verify 时才下载。
+const VerifyPage = defineAsyncComponent(() => import('./components/VerifyPage.vue'))
 
 /**
  * 站点有五个入口：/ 落地页、/demo 静态试用、/app 工作台、/cases 尽调案卷，其余是品牌 404。
@@ -490,6 +498,7 @@ function resolvePage() {
   }
   if (p === '/demo' || p.startsWith('/demo/')) return 'demo'
   if (p === '/cases' || p.startsWith('/cases/')) return 'cases'
+  if (p === '/verify' || p.startsWith('/verify/')) return 'verify'
   if (p === '/app' || p.startsWith('/app/')) return 'app'
   return 'missing'
 }
@@ -512,6 +521,11 @@ const PAGE_META = {
     title: '尽调案卷 · 中文关系抽取系统',
     description: '把一个标的的多份材料收进一个案卷，按直接结论、推断关联与待补强疑点三层摆开，每条都能回到原句。',
     robots: 'noindex, nofollow',
+  },
+  verify: {
+    title: '信息甄别 · 中文关系抽取系统',
+    description: '把一段网传消息拆成可核查的断言，按有据可查、存疑待核、无从核实分层，标出可疑措辞并给出证据线索。',
+    robots: 'index, follow',
   },
   app: {
     title: '工作台 · 中文关系抽取系统',
@@ -1010,6 +1024,10 @@ async function onMoreCommand(command) {
     // 案卷是独立整页：整页跳转让它的路由、样式与返回路径都自洽，
     // 也避免把只读报告链接与案卷状态混在同一个弹窗里。
     location.href = '/cases'
+    return
+  }
+  if (command === 'verify') {
+    location.href = '/verify'
     return
   }
   if (command === 'annotate') annotationOpen.value = true

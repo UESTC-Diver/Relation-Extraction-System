@@ -32,7 +32,8 @@
             @click="closeMenu"
           >{{ item.label }}</a
           >
-          <a class="lp-nav-demo" href="/demo" :style="{ '--stagger': `${navItems.length * 60}ms` }">静态试用</a>
+          <a class="lp-nav-demo" href="/verify" :style="{ '--stagger': `${navItems.length * 60}ms` }">信息甄别</a>
+          <a class="lp-nav-demo" href="/demo" :style="{ '--stagger': `${(navItems.length + 1) * 60}ms` }">静态试用</a>
           <a class="lp-nav-mobile-cta" href="/app">进入工作台</a>
         </div>
 
@@ -455,6 +456,7 @@ const capabilities = [
   { name: '历史复现', fact: 'SQLite 持久化', detail: '主动抽取或点「存入历史」才写库，支持检索、载入复现、单条删除与一键清空；初始示例只作预览不入库。' },
   { name: '人工校正', fact: '可写回', detail: '三元组表格里能改、能删、能新增；点「保存校正」写回历史记录，手工录入的行会标上「人工」。' },
   { name: '领域词典', fact: '即加即用', detail: '内置词典没收录的机构、人名、产品，在输入框旁补一条，下一次抽取就能识别，不用改代码。' },
+  { name: '信息甄别', fact: '日常场景', detail: '把网传消息拆成可核查断言，按有据可查 / 存疑待核 / 无从核实分层，标出煽动与模糊信源；联网核验为可选增强，默认离线。' },
 ]
 
 const methodSteps = [

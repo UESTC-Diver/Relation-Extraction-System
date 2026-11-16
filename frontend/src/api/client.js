@@ -187,4 +187,10 @@ export const removeDossierMaterial = (id, recordId) =>
   http.delete(`/dossiers/${id}/records/${recordId}`)
 export const dossierReportUrl = (id) => `/api/dossiers/${id}/report`
 
+/* ---------- 信息甄别：一次性只读分析 + 联网能力探测 ---------- */
+export const verifyText = (text, useExternal = true) =>
+  http.post('/verify', { text, use_external: useExternal })
+export const getVerifyCapability = () => http.get('/verify/capability')
+export const getVerifyExamples = () => http.get('/verify/examples')
+
 export default http
