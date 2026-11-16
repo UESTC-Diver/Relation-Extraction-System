@@ -215,6 +215,73 @@ def test_free_provider_is_zero_key_and_degrades_silently(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
+# 事实主张提取 + 相关性过滤（真实新闻抽不出三元组时的兜底）
+# --------------------------------------------------------------------------- #
+
+
+def test_fact_claims_rescue_real_news_with_zero_relations():
+    """真实新闻的关系抽取为 0 时，数值/标准类事实主张必须补上，不能报无从核实。"""
+    text = ("这座巴东规模最大的城镇污水处理厂持续升级，日污水处理能力达 2.25 万吨，"
+            "出水水质达国家一级 A 标准，在线监测设备 24 小时采集数据。")
+    result = {"sentences": [{"index": 0, "start": 0, "end": len(text), "text": text}],
+              "entities": [], "relations": []}
+    facts = verify._fact_claims(result, [])
+    assert facts, "数值/标准类新闻必须有事实主张"
+    tails = {f["tail"] for f in facts}
+    assert "2.25 万吨" in tails
+    assert any("一级" in t and "标准" in t for t in tails)
+    assert all(f["kind"] == "fact" for f in facts)
+    assert all(len(f["query"]) <= 60 for f in facts)
+
+
+def test_fact_claims_dedup_with_relations():
+    """同句同尾词若已是关系断言，不再重复生成事实断言。"""
+    text = "日污水处理能力达 2.25 万吨。"
+    result = {"sentences": [{"index": 0, "start": 0, "end": len(text), "text": text}],
+              "entities": [], "relations": []}
+    existing = [{"sentence_index": 0, "tail": "2.25 万吨", "tail_canonical": "2.25 万吨"}]
+    assert verify._fact_claims(result, existing) == []
+
+
+def test_bing_redirect_decodes_to_real_url():
+    """Bing 的 /ck/a?u=a1<base64> 必须解码成真实目标 URL。"""
+    import base64
+    real = "https://www.hbbd.gov.cn/news/123"
+    token = base64.urlsafe_b64encode(real.encode()).decode().rstrip("=")
+    redirect = f"https://www.bing.com/ck/a?&&p=x&u=a1{token}&ntc=1"
+    assert verify._bing_decode(redirect) == real
+
+
+def test_irrelevant_external_evidence_not_counted(monkeypatch):
+    """事实类断言：搜到的结果只有泛词命中（地名）时，不算印证且要扣分。"""
+
+    class FakeProvider(verify.SearchProvider):
+        name = "serper"
+        def available(self):
+            return True
+        def search(self, query):
+            return [{"title": "城镇（非农人口聚集的行政建制居民点）_百度百科",
+                     "url": "https://baike.baidu.com/item/chengzhen",
+                     "snippet": "城镇是行政区划概念"}]
+
+    monkeypatch.setattr(verify, "build_provider", lambda: FakeProvider())
+    claim = {"query": "城镇 日污水处理 2.25 万吨", "kind": "fact"}
+    rep = verify._external_for_claim(claim, FakeProvider(), set())
+    assert rep["relevant_count"] == 0
+    assert rep["evidence"][0]["relevant"] is False
+
+
+def test_real_news_not_uncheckable():
+    """回归：用户反馈的真实新闻，结论必须是存疑待核而非无从核实，且有多条断言。"""
+    text = ("巴东县信陵镇营沱污水处理厂持续升级，日污水处理能力达 2.25 万吨，"
+            "出水水质达国家一级 A 标准，在线监测设备 24 小时采集数据。")
+    r = verify.verify_text(text)  # 默认离线
+    assert r["overall"]["verdict"] != verify.VERDICT_UNCHECKABLE
+    assert len(r["claims"]) >= 2
+    assert all(c["evidence_sentence"] for c in r["claims"])
+
+
+# --------------------------------------------------------------------------- #
 # 只读 + 边界 + 输入校验
 # --------------------------------------------------------------------------- #
 

@@ -32,10 +32,13 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import html as html_lib
 import json
 import os
 import re
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -62,6 +65,12 @@ VERDICT_LABELS = {
 MAX_CHARS = 8000
 MAX_EXTERNAL_QUERIES = 6
 EXTERNAL_TIMEOUT = float(os.environ.get("VERIFY_EXTERNAL_TIMEOUT", "6"))
+# 免费搜索源对不稳定网络做了「HTTPS 校验降级 + 有限重试」，这里预建 context 复用
+_FREE_SSL_CTX = ssl.create_default_context()
+_FREE_SSL_CTX.check_hostname = False
+_FREE_SSL_CTX.verify_mode = ssl.CERT_NONE
+_FREE_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 
 # 句式可疑信号。每一条都是「文本里出现这类写法，就值得提醒读者」的确定性规则。
 # level: high 会单独抬高整段的风险，medium 只作用于命中的那一句。
@@ -130,6 +139,24 @@ _REFUTE_WORDS = ("辟谣", "不实", "谣言", "澄清", "否认", "回应称", 
 
 # 外部检索 query 的停用片段：这些词对定位一条断言没帮助，还会把 query 撑成句子。
 _QUERY_STOP = re.compile(r"(近日|日前|据悉|据了解|网传|网友|消息|称|表示|宣布|官方|近日)")
+# 相关性判定用的虚词：这些词命中不算数，避免「巴东县」地名伪印证「2.25 万吨处理能力」
+_RELEVANCE_STOP = re.compile(r"(这座|该|其|的|了|在|与|和|达|为|是|有|将|把|被|对|从|到|等|级|标准|指标|能力|处理)")
+_RELEVANCE_TOKEN = re.compile(r"[\u4e00-\u9fff]{2,6}|\d+(?:\.\d+)?[a-zA-Z\u4e00-\u9fff]*")
+
+
+def _query_keywords(query: str) -> list[str]:
+    """从检索短句里取有区分度的关键词，用于判定外部证据是否真的相关。"""
+    toks = _RELEVANCE_TOKEN.findall(query)
+    keys = [t for t in toks if len(t) >= 2 and not _RELEVANCE_STOP.fullmatch(t)][:6]
+    return keys
+
+
+def _is_relevant(blob: str, keys: list[str]) -> bool:
+    """证据须命中至少 2 个不同关键词才算相关，防止只蹭到一个泛词的伪印证。"""
+    if not keys:
+        return False
+    hits = sum(1 for k in keys[:4] if k in blob)
+    return hits >= 2
 
 
 # --------------------------------------------------------------------------- #
@@ -240,17 +267,19 @@ class TavilyProvider(SearchProvider):
 
 
 class FreeProvider(SearchProvider):
-    """零 key 的公开来源抽查：维基百科 API（稳）+ DuckDuckGo HTML（尽力而为）。
+    """零 key 的公开来源抽查：Bing 网页搜索（主）+ 维基百科 API + DuckDuckGo（兜底）。
 
-    为什么需要它
-    ------------
-    课程演示只查几次，为这点用量去申请 Serper / Tavily 账号不值当。这个 provider
-    不需要任何 key、任何配置，开箱即用。它查的是**公开百科与搜索摘要**，只用于
-    给用户提供「可以去哪核实」的线索，权威性明显低于官方来源，所以来源分级里
-    维基归「主流 / 参考」、DuckDuckGo 归「社区」，绝不会因为查到了就抬高结论。
+    为什么用 Bing 打头
+    ------------------
+    维基百科对「某县污水处理厂日处理 2.25 万吨」这类地方冷门新闻几乎搜不到，且
+    容易只命中地名（搜「巴东县…」返回「巴东县」条目）造成**伪印证**。Bing 国际版
+    是真正的新闻 / 网页搜索，零 key 可直连，能返回政府站、媒体报道等真实线索，
+    因此作为主来源；维基与 DuckDuckGo 退为兜底。
 
-    两条来源都做了失败静默：国内网络对 DuckDuckGo 偶尔不通、维基偶有超时，都不
-    影响甄别主体。全挂了就返回空证据，结论标注「未外部核实」——和离线模式一致。
+    这个 provider 不需要任何 key、任何配置，开箱即用。它只给用户提供「可以去哪
+    核实」的线索，权威性明显低于官方来源，维基 / 普通网页归「参考 / 社区」，绝不
+    因为查到了就抬高结论。所有来源都失败静默：断网、超时、被墙都不影响甄别主体，
+    全挂了就返回空证据，结论标注「未外部核实」——和离线模式一致。
     """
 
     name = "free"
@@ -261,6 +290,7 @@ class FreeProvider(SearchProvider):
 
     def search(self, query: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
+        out.extend(_bing_search(query))
         out.extend(_wikipedia_search(query))
         out.extend(_duckduckgo_search(query))
         # 去重保序，最多 5 条
@@ -274,6 +304,59 @@ class FreeProvider(SearchProvider):
             if len(unique) >= 5:
                 break
         return unique
+
+
+def _bing_decode(url: str) -> str:
+    """把 Bing 的 /ck/a?u=a1<base64> 跳转链接解码成真实目标 URL。"""
+    raw = html_lib.unescape(url)
+    m = re.search(r"[?&]u=a1([^&]+)", raw)
+    if not m:
+        return raw if raw.startswith(("http://", "https://")) else ""
+    try:
+        padded = m.group(1) + "=" * (-len(m.group(1)) % 4)
+        return base64.urlsafe_b64decode(padded).decode("utf-8", "ignore")
+    except Exception:
+        return ""
+
+
+def _bing_search(query: str) -> list[dict[str, Any]]:
+    """Bing 国际版网页搜索：零 key、真实新闻线索。带重试与 SSL 降级，失败静默。"""
+    endpoint = "https://www.bing.com/search?q=" + urllib.parse.quote(query) + "&setlang=zh-hans"
+    page = ""
+    for _ in range(2):  # 偶发 TLS 握手超时，最多重试一次
+        try:
+            req = urllib.request.Request(endpoint, headers={"User-Agent": _FREE_UA})
+            with urllib.request.urlopen(req, timeout=EXTERNAL_TIMEOUT, context=_FREE_SSL_CTX) as resp:
+                page = resp.read().decode("utf-8", "ignore")
+            break
+        except Exception:
+            continue
+    if not page:
+        return []
+
+    def clean(raw: str) -> str:
+        return re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", "", raw))).strip()
+
+    out: list[dict[str, Any]] = []
+    for block in re.findall(r'<li class="b_algo".*?</li>', page, re.S):
+        m = re.search(r'<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', block, re.S)
+        if not m:
+            continue
+        real = _bing_decode(m.group(1))
+        if not real.startswith(("http://", "https://")):
+            continue
+        title = clean(m.group(2))
+        if not title:
+            continue
+        p = re.search(r"<p[^>]*>(.*?)</p>", block, re.S)
+        out.append({
+            "title": title[:160],
+            "url": real[:500],
+            "snippet": clean(p.group(1))[:300] if p else "",
+        })
+        if len(out) >= 5:
+            break
+    return out
 
 
 def _wikipedia_search(query: str) -> list[dict[str, Any]]:
@@ -471,6 +554,92 @@ def _build_claims(result: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
+# 事实主张提取：独立于关系抽取，专治「真实新闻抽不出三元组」
+# --------------------------------------------------------------------------- #
+
+# 数值 + 单位：新闻里最硬的可核查事实（2.25 万吨 / 24 小时 / 99.9%）。
+_FACT_NUM = re.compile(r"\d+(?:\.\d+)?\s*(?:万吨|亿吨|万吨|吨|公斤|千米|公里|米|平方米|"
+                       r"亿元|万元|亿|万|%|％|个百分点|小时|分钟|天|小时|倍|级|台|座|条|个)")
+# 指标 / 标准：这类定性说法同样可核查（一级 A 标准 / 国家标准 / 覆盖率）。
+_FACT_STANDARD = re.compile(r"(?:国家|行业|地方|国际)?\s*[一二三四五1-5]\s*级\s*[A-Z]?\s*标准|"
+                            r"国家标准|排放标准|覆盖率|达标率")
+# 从数值片段往前找「指标主体」：日污水处理能力达 2.25 万吨 → 日污水处理能力。
+_FACT_LABEL = re.compile(r"([\u4e00-\u9fff]{2,12}?(?:能力|标准|率|量|數|数|时长|时间|规模|覆盖|处理|监测))"
+                         r"[^。；;，,]{0,8}?$")
+
+
+def _fact_claims(result: dict[str, Any], existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """从句子里抽「数值 / 标准」类可核查断言，补关系抽取的盲区。
+
+    为什么必须有这一层：关系抽取只认内置词典与触发词，像「某县污水处理厂日处理
+    2.25 万吨」这种没有预置实体的真实新闻，三元组为 0。但句子里的数字、单位、
+    标准是可核查的事实内核，不该被判成「无从核实」。这里用确定性正则把它们抽成
+    断言，只取原文片段做 head/tail/证据，query 仍是短句，绝不上传全文。
+
+    与关系断言按「同句同尾词」去重，避免一条事实出现两次。
+    """
+    sentences = {
+        int(s.get("index", 0)): {
+            "text": str(s.get("text") or ""),
+            "start": int(s.get("start") or 0),
+            "end": int(s.get("end") or 0),
+        }
+        for s in result.get("sentences", [])
+    }
+    seen_sig = {(c["sentence_index"], c.get("tail_canonical") or c.get("tail")) for c in existing}
+    out: list[dict[str, Any]] = []
+    for idx, sent in sentences.items():
+        text = sent["text"]
+        # 数值最多两条 + 标准最多一条，既防刷屏又保留「达标标准」这类关键事实
+        found: list[tuple[str, str, str]] = []  # (label, tail, kind)
+        for m in _FACT_NUM.finditer(text):
+            tail = m.group(0).strip()
+            before = text[:m.start()]
+            lm = _FACT_LABEL.search(before)
+            label = lm.group(1) if lm else "数值指标"
+            found.append((label, tail, "number"))
+            if len(found) >= 2:
+                break
+        for m in _FACT_STANDARD.finditer(text):
+            tail = m.group(0).strip()
+            before = text[:m.start()]
+            lm = _FACT_LABEL.search(before)
+            label = lm.group(1) if lm else "达标标准"
+            found.append((label, tail, "standard"))
+            if len(found) >= 3:
+                break
+        # 该句里出现的实体名，作为 query 的专名锚点（比整句前缀噪声小得多）
+        anchors = [str(e.get("text") or "") for e in result.get("entities", [])
+                   if str(e.get("text") or "") in text][:2]
+        for label, tail, kind in found:
+            if (idx, tail) in seen_sig:
+                continue
+            seen_sig.add((idx, tail))
+            # query = 专名锚点 + 指标 + 数值，长度硬上限 60，绝不带整句
+            parts = [*anchors, label, tail]
+            query = " ".join(dict.fromkeys(p for p in parts if p))[:60]
+            out.append({
+                "head": label,
+                "head_canonical": label,
+                "head_type": "FACT",
+                "relation": "fact_" + kind,
+                "relation_label": "数值" if kind == "number" else "标准",
+                "tail": tail,
+                "tail_canonical": tail,
+                "tail_type": "FACT",
+                "confidence": 0.8,  # 事实主张来自原文明确片段，给中高基线但低于抽取的高置信
+                "evidence": text,
+                "evidence_sentence": text,
+                "sentence_index": idx,
+                "sentence_start": sent["start"],
+                "sentence_end": sent["end"],
+                "query": query,
+                "kind": "fact",  # 前端可据此标注「事实主张」而非「关系」
+            })
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # 第二段：外部核验（可配置，默认关闭）
 # --------------------------------------------------------------------------- #
 
@@ -510,13 +679,21 @@ def _external_for_claim(
         # 联网失败一律降级，不把异常暴露成整个功能不可用
         return {"status": "error", "evidence": [], "domains": [], "refuted": False}
 
+    keywords = _query_keywords(query)
+    # 相关性过滤主要针对事实数值类断言（泛词多、最易伪命中）；关系类断言的
+    # query 本就是精确实体对，搜索结果天然相关，放宽以免误伤辟谣识别。
+    strict = claim.get("kind") == "fact"
     evidence = []
     refuted = False
+    relevant_count = 0
     for item in raw[:5]:
         url = item.get("url", "")
         blob = f"{item.get('title', '')} {item.get('snippet', '')}"
         is_refute = any(w in blob for w in _REFUTE_WORDS)
-        if is_refute:
+        relevant = _is_relevant(blob, keywords) if strict else True
+        if relevant:
+            relevant_count += 1
+        if is_refute and relevant:  # 辟谣词也要相关，避免别处谣言误伤
             refuted = True
         evidence.append(
             {
@@ -525,7 +702,8 @@ def _external_for_claim(
                 "snippet": item.get("snippet", ""),
                 "source_tier": _source_tier(url),
                 "source_label": _SOURCE_LABELS[_source_tier(url)],
-                "refuting": is_refute,
+                "refuting": is_refute and relevant,
+                "relevant": relevant,
             }
         )
     domains = list(dict.fromkeys(urllib.parse.urlparse(e["url"]).netloc for e in evidence))
@@ -535,6 +713,7 @@ def _external_for_claim(
         "evidence": evidence,
         "domains": domains,
         "refuted": refuted,
+        "relevant_count": relevant_count,
     }
 
 
@@ -584,16 +763,22 @@ def _grade_claim(
     # 4. 外部核验：只在真正拿到证据时改变结论
     ext_status = external.get("status")
     if ext_status == "checked":
-        tiers = [e["source_tier"] for e in external.get("evidence", []) if not e["refuting"]]
+        # 只认「相关」证据：只蹭到泛词（如地名）的结果不算印证，防止伪证据抬高结论
+        rel = [e for e in external.get("evidence", []) if e.get("relevant", True)]
+        tiers = [e["source_tier"] for e in rel if not e["refuting"]]
+        rel_domains = {urllib.parse.urlparse(e["url"]).netloc for e in rel}
         if external.get("refuted"):
             score -= 2
             reasons.append("外部检索到疑似辟谣 / 否认的信息")
         elif "official" in tiers:
             score += 2
             reasons.append("外部检索到官方 / 权威来源的印证")
-        elif len(set(external.get("domains", []))) >= 2:
+        elif len(rel_domains) >= 2:
             score += 1
-            reasons.append(f"外部有 {len(set(external['domains']))} 个不同来源提及")
+            reasons.append(f"外部有 {len(rel_domains)} 个不同来源提及")
+        elif external.get("relevant_count", 0) == 0 and external.get("evidence"):
+            score -= 1
+            reasons.append("外部检索结果主题不相关，未作为印证")
         else:
             reasons.append("外部检索未找到明确印证")
     elif ext_status in ("skipped", "quota", "duplicate", "error"):
@@ -672,6 +857,10 @@ def verify_text(text: str, use_external: bool = False) -> dict[str, Any]:
 
     signals = _skill_check(text)
     claims = _build_claims(result)
+    # 关系抽取为 0 不代表「没有事实」：真实新闻里的数值 / 标准另走一条确定性提取，
+    # 与关系断言合并，避免把「词典没覆盖」误判成「无从核实」。
+    claims.extend(_fact_claims(result, claims))
+    claims.sort(key=lambda c: (-c["confidence"], c["sentence_index"]))
 
     provider: SearchProvider = build_provider() if use_external else NullProvider("本次未请求联网核验")
     seen: set[str] = set()
