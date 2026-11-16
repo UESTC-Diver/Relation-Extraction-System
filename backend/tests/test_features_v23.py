@@ -165,6 +165,35 @@ def test_provider_selection_off_and_explicit(monkeypatch):
     assert verify.build_provider().name == "serper"
 
 
+def test_tavily_uses_bearer_auth_header(monkeypatch):
+    """回归防护：Tavily 必须走 Authorization Bearer，旧版塞 body 的 api_key 会 401。"""
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def read(self):
+            return b'{"results": []}'
+
+    def fake_urlopen(req, timeout=None):
+        captured["headers"] = dict(req.headers)
+        captured["body"] = req.data.decode("utf-8")
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(verify.urllib.request, "urlopen", fake_urlopen)
+    provider = verify.TavilyProvider("tvly-test-key")
+    provider.search("腾讯 收购 搜狗")
+
+    headers = {k.lower(): v for k, v in captured["headers"].items()}
+    assert "authorization" in headers
+    assert headers["authorization"] == "Bearer tvly-test-key"
+    assert "api_key" not in captured["body"]  # 不能再出现在 body 里
+    assert "topic" in captured["body"] and '"news"' in captured["body"]
+
+
 # --------------------------------------------------------------------------- #
 # 只读 + 边界 + 输入校验
 # --------------------------------------------------------------------------- #

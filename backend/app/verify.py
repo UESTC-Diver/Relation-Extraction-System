@@ -208,13 +208,18 @@ class TavilyProvider(SearchProvider):
         return bool(self.key)
 
     def search(self, query: str) -> list[dict[str, Any]]:
+        # Tavily 现用 Authorization: Bearer 鉴权；旧版把 api_key 塞 body 的写法
+        # 会被 401 拒绝。basic 深度 = 1 credit/次，学生免费额度足够演示。
         payload = json.dumps(
-            {"api_key": self.key, "query": query, "max_results": 5, "search_depth": "basic"}
+            {"query": query, "max_results": 5, "search_depth": "basic", "topic": "news"}
         ).encode("utf-8")
         req = urllib.request.Request(
             self.endpoint,
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.key}",
+            },
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=EXTERNAL_TIMEOUT) as resp:
