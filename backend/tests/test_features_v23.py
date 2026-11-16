@@ -282,6 +282,75 @@ def test_real_news_not_uncheckable():
 
 
 # --------------------------------------------------------------------------- #
+# 全文主体识别：检索要围绕「谁 / 在哪」，不能围绕孤立数字（用户反馈青湖县新闻）
+# --------------------------------------------------------------------------- #
+
+
+def test_subjects_extracted_from_whole_text():
+    """主体在首句、数字在第二句时，必须从全文抓出主体，不能只认当前句实体。"""
+    text = ("【青湖县 11 月 16 日讯】青湖湿地保护区本年度候鸟监测工作收官。"
+            "监测团队统计，今冬到访的候鸟种类较去年增加 6 种，总数量上升约 18%。")
+    result = {"sentences": [{"index": 0, "start": 0, "end": 40, "text": text}],
+              "entities": [{"text": "青湖县", "type": "LOC"},
+                           {"text": "保护区", "type": "LOC"},
+                           {"text": "去年", "type": "TIME"}],
+              "relations": []}
+    subs = verify._subjects(result, text)
+    assert "青湖县" in subs
+    assert "青湖湿地保护区" in subs  # 正则补漏词典未收的专名
+    assert "去年" not in subs  # 时间词不能当主体
+    assert "保护区" not in subs  # 过泛子串应被长的主体吸收
+
+
+def test_fact_query_carries_subject_not_time_word():
+    """回归：18% 的 query 必须带主体，不能退化成「去年 总数量 18%」的数学题。"""
+    text = ("【青湖县 11 月 16 日讯】青湖湿地保护区本年度候鸟监测工作收官。"
+            "监测团队统计，今冬到访的候鸟种类较去年增加 6 种，总数量上升约 18%。")
+    result = {"sentences": [{"index": 0, "start": 0, "end": 40, "text": text}],
+              "entities": [{"text": "青湖县", "type": "LOC"},
+                           {"text": "去年", "type": "TIME"}], "relations": []}
+    subs = verify._subjects(result, text)
+    facts = verify._fact_claims(result, [], subs)
+    query = facts[0]["query"]
+    assert "青湖县" in query, f"query 必须带主体，实际={query}"
+    assert "18%" in query
+    # 关键回归：不能把时间词当锚点，否则 Bing 当成「去年增长多少」的计算题
+    assert not query.startswith("去年")
+
+
+def test_conclusion_states_found_or_not_found_with_subject(monkeypatch):
+    """外部核验结论必须明确「查到 / 没查到」并指名主体，不能含糊成主题不相关。"""
+    class NoiseProvider(verify.SearchProvider):
+        name = "serper"
+        def available(self):
+            return True
+        def search(self, query):
+            return [{"title": "青（汉语文字）_百度百科", "url": "https://baike.baidu.com/item/qing",
+                     "snippet": "青是一个汉字"}]
+
+    claim = {"query": "青湖县 青湖湿地保护区 总数量 18%", "kind": "fact",
+             "subject_label": "青湖县、青湖湿地保护区"}
+    ext = verify._external_for_claim(claim, NoiseProvider(), set())
+    graded = verify._grade_claim(
+        {**claim, "evidence": "总数量上升约 18%", "confidence": 0.8,
+         "sentence_index": 1, "sentence_start": 40, "sentence_end": 80},
+        [], ext)
+    reasons = " ".join(graded["reasons"])
+    assert "未查到" in reasons, f"必须明确说没查到，实际={reasons}"
+    assert "青湖" in reasons, f"理由要点名主体，实际={reasons}"
+    assert "主题不相关" not in reasons, "不能再出现含糊的旧表述"
+
+
+def test_real_news_exposes_subjects_in_report():
+    """整合：用户那段青湖县新闻，报告要带 subjects 字段供前端展示。"""
+    text = ("【青湖县 11 月 16 日讯】青湖湿地保护区本年度候鸟监测工作收官。"
+            "监测团队统计，今冬到访的候鸟种类较去年增加 6 种，总数量上升约 18%。")
+    r = verify.verify_text(text)  # 默认离线
+    assert any("青湖" in s for s in r["subjects"])
+    assert all(c["query"].startswith("青湖") or "青湖" in c["query"] for c in r["claims"])
+
+
+# --------------------------------------------------------------------------- #
 # 只读 + 边界 + 输入校验
 # --------------------------------------------------------------------------- #
 

@@ -143,6 +143,47 @@ _QUERY_STOP = re.compile(r"(近日|日前|据悉|据了解|网传|网友|消息|
 _RELEVANCE_STOP = re.compile(r"(这座|该|其|的|了|在|与|和|达|为|是|有|将|把|被|对|从|到|等|级|标准|指标|能力|处理)")
 _RELEVANCE_TOKEN = re.compile(r"[\u4e00-\u9fff]{2,6}|\d+(?:\.\d+)?[a-zA-Z\u4e00-\u9fff]*")
 
+# 新闻主体识别：检索要围绕「谁 / 在哪 / 什么事」，而不是孤立的数字。
+# 用户反馈的病根：青湖县候鸟新闻只抽到「18%」，query 里却只有「去年 总数量 18%」
+# ——主体在首句、数字在第二句，旧逻辑只取当前句实体，抓到时间词「去年」，
+# 导致 Bing 把 query 当成「增长率怎么算」，返回一堆增长率计算器。
+# 这里从全文识别主体，作为所有断言 query 的共享锚点（确定性规则，不联网不调模型）。
+_SUBJECT_ORG = re.compile(
+    r"[\u4e00-\u9fff]{2,12}?(?:保护区|湿地|公园|景区|公司|集团|学校|医院|工厂|"
+    r"管理局|管理中心|监测站|研究所|车站|机场|银行|大学|学院)"
+)
+_SUBJECT_PLACE = re.compile(r"[\u4e00-\u9fff]{2,6}(?:县|市|区|镇|乡|省|州|盟)")
+_SUBJECT_GENERIC = frozenset({
+    "保护区", "湿地", "公园", "景区", "公司", "集团", "学校", "医院", "工厂",
+    "管理局", "管理中心", "监测站", "研究所", "车站", "机场", "银行", "大学", "学院",
+    "去年", "今年", "近日", "日前", "当地", "记者", "工作人员", "消息", "网友",
+})
+
+
+def _subjects(result: dict[str, Any], text: str) -> list[str]:
+    """从全文识别新闻主体（地名 / 机构专名），供所有断言 query 共用。
+
+    只用确定性规则：① 抽取器给出的 LOC/ORG 实体；② 机构 / 地名后缀正则补漏
+    （「青湖湿地保护区」这类没进词典的专名）；③ 去掉被更长主体包含的子串，并
+    过滤「保护区」这种过泛词。不联网、不调模型，同文本结果稳定。
+    """
+    out: list[str] = []
+
+    def add(s: str) -> None:
+        s = s.strip()
+        if 2 <= len(s) <= 16 and s not in _SUBJECT_GENERIC and s not in out:
+            out.append(s)
+
+    for e in result.get("entities", []):
+        if str(e.get("type") or "") in ("LOC", "ORG"):
+            add(str(e.get("text") or ""))
+    for pat in (_SUBJECT_ORG, _SUBJECT_PLACE):
+        for m in pat.finditer(text):
+            add(m.group(0))
+    # 「保护区」是「青湖湿地保护区」的子串：去掉短的，留信息量大的
+    out = [s for s in out if not any(s != other and s in other for other in out)]
+    return out[:3]
+
 
 def _query_keywords(query: str) -> list[str]:
     """从检索短句里取有区分度的关键词，用于判定外部证据是否真的相关。"""
@@ -568,7 +609,8 @@ _FACT_LABEL = re.compile(r"([\u4e00-\u9fff]{2,12}?(?:能力|标准|率|量|數|�
                          r"[^。；;，,]{0,8}?$")
 
 
-def _fact_claims(result: dict[str, Any], existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _fact_claims(result: dict[str, Any], existing: list[dict[str, Any]],
+                 subjects: list[str] | None = None) -> list[dict[str, Any]]:
     """从句子里抽「数值 / 标准」类可核查断言，补关系抽取的盲区。
 
     为什么必须有这一层：关系抽取只认内置词典与触发词，像「某县污水处理厂日处理
@@ -608,14 +650,18 @@ def _fact_claims(result: dict[str, Any], existing: list[dict[str, Any]]) -> list
             found.append((label, tail, "standard"))
             if len(found) >= 3:
                 break
-        # 该句里出现的实体名，作为 query 的专名锚点（比整句前缀噪声小得多）
-        anchors = [str(e.get("text") or "") for e in result.get("entities", [])
-                   if str(e.get("text") or "") in text][:2]
+        # query 锚点：优先用全文主体（青湖县 / 青湖湿地保护区），而不是该句实体。
+        # 旧逻辑只取当前句实体，数字在第 2 句、主体在第 1 句时会抓到「去年」这种
+        # 时间词，把 query 带偏成「去年 总数量 18%」→ 检索出一堆增长率计算器。
+        anchors = list(subjects or [])
+        if not anchors:
+            anchors = [str(e.get("text") or "") for e in result.get("entities", [])
+                       if str(e.get("text") or "") in text][:2]
         for label, tail, kind in found:
             if (idx, tail) in seen_sig:
                 continue
             seen_sig.add((idx, tail))
-            # query = 专名锚点 + 指标 + 数值，长度硬上限 60，绝不带整句
+            # query = 全文主体 + 指标 + 数值，长度硬上限 60，绝不带整句
             parts = [*anchors, label, tail]
             query = " ".join(dict.fromkeys(p for p in parts if p))[:60]
             out.append({
@@ -760,29 +806,39 @@ def _grade_claim(
         score -= 1
         reasons.append("本句出现可疑措辞：" + "、".join(s["label"] for s in near[:3]))
 
-    # 4. 外部核验：只在真正拿到证据时改变结论
+    # 4. 外部核验：只在真正拿到证据时改变结论。结论必须明确「查到 / 没查到」，
+    #    不能含糊成「主题不相关未作为印证」——用户要以为主语没被检索，焦点跑偏。
     ext_status = external.get("status")
+    subject = claim.get("subject_label") or "该主体"
     if ext_status == "checked":
         # 只认「相关」证据：只蹭到泛词（如地名）的结果不算印证，防止伪证据抬高结论
         rel = [e for e in external.get("evidence", []) if e.get("relevant", True)]
         tiers = [e["source_tier"] for e in rel if not e["refuting"]]
         rel_domains = {urllib.parse.urlparse(e["url"]).netloc for e in rel}
+        relevant_count = external.get("relevant_count", 0)
         if external.get("refuted"):
             score -= 2
-            reasons.append("外部检索到疑似辟谣 / 否认的信息")
+            reasons.append(f"查到与「{subject}」相关的疑似辟谣 / 否认信息")
         elif "official" in tiers:
             score += 2
-            reasons.append("外部检索到官方 / 权威来源的印证")
+            reasons.append(f"查到与「{subject}」相关的官方 / 权威来源印证")
         elif len(rel_domains) >= 2:
             score += 1
-            reasons.append(f"外部有 {len(rel_domains)} 个不同来源提及")
-        elif external.get("relevant_count", 0) == 0 and external.get("evidence"):
+            reasons.append(f"查到 {len(rel_domains)} 个不同来源提及「{subject}」")
+        elif relevant_count > 0:
+            score += 1
+            reasons.append(f"查到 {relevant_count} 条与「{subject}」主题相关的线索")
+        elif external.get("evidence"):
+            # 有返回结果但都跟主体对不上：明确说「没查到」，并解释为什么不算印证
             score -= 1
-            reasons.append("外部检索结果主题不相关，未作为印证")
+            reasons.append(
+                f"未查到与「{subject}」直接相关的信息：检索到 {len(external['evidence'])} 条结果"
+                "但主题不符，均未采信"
+            )
         else:
-            reasons.append("外部检索未找到明确印证")
+            reasons.append(f"未查到与「{subject}」相关的公开信息")
     elif ext_status in ("skipped", "quota", "duplicate", "error"):
-        reasons.append("未做外部核实（不代表属实）")
+        reasons.append("本次未做外部核实（不代表属实）")
 
     # 5. 定级（阈值刻意保守：宁可报存疑，不轻易报有据可查）
     if score >= 3:
@@ -857,10 +913,17 @@ def verify_text(text: str, use_external: bool = False) -> dict[str, Any]:
 
     signals = _skill_check(text)
     claims = _build_claims(result)
+    # 全文主体（地名 / 机构）：让检索围绕「青湖县湿地保护区」这类主角展开，
+    # 而不是围绕孤立数字；所有断言的 query 共用这层锚点。
+    subjects = _subjects(result, text)
     # 关系抽取为 0 不代表「没有事实」：真实新闻里的数值 / 标准另走一条确定性提取，
     # 与关系断言合并，避免把「词典没覆盖」误判成「无从核实」。
-    claims.extend(_fact_claims(result, claims))
+    claims.extend(_fact_claims(result, claims, subjects))
     claims.sort(key=lambda c: (-c["confidence"], c["sentence_index"]))
+    # 每条断言带上识别出的主体标签，供外部核验理由明确说「查到 / 没查到」时指名道姓
+    subject_label = "、".join(subjects[:2])
+    for c in claims:
+        c["subject_label"] = subject_label
 
     provider: SearchProvider = build_provider() if use_external else NullProvider("本次未请求联网核验")
     seen: set[str] = set()
@@ -874,6 +937,7 @@ def verify_text(text: str, use_external: bool = False) -> dict[str, Any]:
         "text": text,
         "overall": overall,
         "signals": signals,
+        "subjects": subjects,
         "claims": graded,
         "external": {
             "enabled": provider.available(),

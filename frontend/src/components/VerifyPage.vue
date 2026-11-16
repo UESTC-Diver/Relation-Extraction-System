@@ -107,6 +107,11 @@
                 </span>
               </div>
               <p class="voverall-summary">{{ report.overall.summary }}</p>
+              <div v-if="report.subjects && report.subjects.length" class="vsubjects">
+                <span class="vsubjects-label">识别到的主体</span>
+                <span v-for="s in report.subjects" :key="s" class="vsubject">{{ s }}</span>
+                <span class="vsubjects-note">外部检索将围绕这些主体展开</span>
+              </div>
               <p class="vdisclaimer">
                 <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="currentColor" /><path d="M8 7v4M8 5h.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
                 {{ report.disclaimer }}
@@ -350,6 +355,10 @@ async function run() {
 .voverall.is-uncheckable .voverall-badge { color: var(--accent); }
 .voverall-meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .voverall-summary { font-size: 14px; line-height: 1.7; margin: 10px 0 0; }
+.vsubjects { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 0; }
+.vsubjects-label { font-size: 11.5px; color: var(--muted); margin-right: 2px; }
+.vsubject { display: inline-block; font-size: 12px; font-weight: 600; color: #7a2f28; background: #f6e8e2; border: 1px solid #e6cdc3; border-radius: 999px; padding: 3px 10px; }
+.vsubjects-note { font-size: 11px; color: var(--muted); margin-left: 2px; }
 .vdisclaimer { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; line-height: 1.6; color: var(--muted); margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .vdisclaimer svg { width: 14px; height: 14px; flex: none; margin-top: 1px; }
 
