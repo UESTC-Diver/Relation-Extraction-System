@@ -32,6 +32,7 @@
             @click="closeMenu"
           >{{ item.label }}</a
           >
+          <a class="lp-nav-demo" href="/demo" :style="{ '--stagger': `${navItems.length * 60}ms` }">静态试用</a>
           <a class="lp-nav-mobile-cta" href="/app">进入工作台</a>
         </div>
 
@@ -72,12 +73,15 @@
             <p class="lp-sub reveal" :style="{ '--d': '80ms' }">
               词典与规则模板驱动的中文实体识别与关系抽取，本机处理，每条结果都能回到原文。
             </p>
-            <a class="lp-cta reveal" :style="{ '--d': '160ms' }" href="/app">
-              进入工作台
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-            </a>
+            <div class="lp-hero-actions reveal" :style="{ '--d': '160ms' }">
+              <a class="lp-cta" href="/app">
+                进入工作台
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M4 12h15M13 6l6 6-6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </a>
+              <a class="lp-cta-secondary" href="/demo">先看静态样例 <span aria-hidden="true">↗</span></a>
+            </div>
           </div>
         </div>
 
@@ -860,6 +864,13 @@ html.lp-anim .lp-mask-in-2 { animation-delay: calc(var(--stagger-step) * 2); }
 .lp-cta svg { width: 20px; height: 20px; }
 .lp-cta:hover { background: var(--ink); }
 .lp-cta:active { transform: scale(0.98); }
+.lp-hero-actions { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 20px; }
+.lp-cta-secondary {
+  font-size: 14px; font-weight: 600; color: var(--ink-2);
+  text-decoration: none; text-underline-offset: 4px;
+  transition: color var(--dur-color) var(--ease);
+}
+.lp-cta-secondary:hover { color: var(--red); text-decoration: underline; }
 /* ---------- 接口契约面板：真实界面片段 ---------- */
 .lp-sheet-wrap { margin-top: 56px; padding-bottom: 96px; }
 .lp-sheet { position: relative; background: var(--brand-surface); border-radius: var(--r); overflow: hidden; }

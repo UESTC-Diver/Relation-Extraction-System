@@ -158,10 +158,14 @@ def samples() -> list[dict]:
     return SAMPLES
 
 
-@router.get("/schema", summary="实体类型与关系类型目录")
+@router.get("/schema", summary="实体类型、关系类型与领域包目录")
 def schema() -> dict:
+    from ..nlp.profiles import DEFAULT_PROFILE, catalog
+
     return {
         "entity_types": entity_catalog(),
         "relation_types": relation_catalog(),
         "relation_count": len(RELATION_RULES),
+        "profiles": catalog(),
+        "default_profile": DEFAULT_PROFILE,
     }

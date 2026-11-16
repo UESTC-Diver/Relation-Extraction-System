@@ -77,8 +77,21 @@ def _compile_special(template: str) -> re.Pattern[str]:
     return re.compile(pattern)
 
 
+def _humanize_template(template: str) -> str:
+    """把句式模板的正则转成可读骨架，用于「为什么抽出来」的命中模板展示。
+
+    {0} / {1} 是实体槽位；(?:a|b) 是可选说法，只取第一种作为代表，
+    不把正则语法暴露给使用者。
+    """
+    import re as _re
+
+    text = template.replace("{0}", "A").replace("{1}", "B").replace("{2}", "C")
+    text = _re.sub(r"\(\?:([^|)]+)(?:\|[^)]*)?\)\??", r"\1", text)
+    return text.replace("?", "")
+
+
 _COMPILED_SPECIAL = [
-    (_compile_special(tpl), key, head_pos, tail_pos)
+    (_compile_special(tpl), key, head_pos, tail_pos, _humanize_template(tpl))
     for tpl, key, head_pos, tail_pos in SPECIAL_PATTERNS
 ]
 
@@ -98,6 +111,9 @@ class Triple:
     evidence: str
     trigger: str
     rule_base: str = "trigger"
+    # 仅用于「为什么抽出来」的展示，不参与去重 / 排序 / 评测
+    score_parts: dict = field(default_factory=dict)
+    matched_template: str = ""
 
     def as_dict(self) -> dict:
         rule = RELATION_MAP[self.key]
@@ -118,6 +134,8 @@ class Triple:
             "sentence_index": self.sentence_index,
             "trigger": self.trigger,
             "rule_base": self.rule_base,
+            "score_parts": self.score_parts,
+            "matched_template": self.matched_template,
         }
 
 
@@ -295,7 +313,7 @@ class RelationExtractor:
     def _special_patterns(self, sent: Sentence, ents: list[Entity]) -> list[Triple]:
         masked, order = self._mask(sent.text, ents)
         out: list[Triple] = []
-        for regex, key, head_pos, tail_pos in _COMPILED_SPECIAL:
+        for regex, key, head_pos, tail_pos, template in _COMPILED_SPECIAL:
             rule = RELATION_MAP[key]
             for m in regex.finditer(masked):
                 raw = [g for g in m.groups() if g is not None]
@@ -315,6 +333,8 @@ class RelationExtractor:
                         evidence=sent.text,
                         trigger=_render(m.group(0), order)[:16],
                         rule_base="pattern",
+                        score_parts={"base": 0.94, "distance_penalty": 0.0, "adjust": 0.0},
+                        matched_template=template,
                     )
                 )
         return out
@@ -608,11 +628,17 @@ class RelationExtractor:
         trigger: str, base: str, adjust: float = 0.0,
     ) -> Triple:
         base_conf = {"pattern": 0.96, "coref": 0.90}.get(base, 0.93)
-        confidence = max(0.52, min(0.98, base_conf - min(0.32, 0.013 * max(0, distance)) + adjust))
+        penalty = -min(0.32, 0.013 * max(0, distance))
+        confidence = max(0.52, min(0.98, base_conf + penalty + adjust))
         return Triple(
             head=head, tail=tail, key=rule.key,
             confidence=confidence, sentence_index=sent.index,
             evidence=sent.text, trigger=trigger, rule_base=base,
+            score_parts={
+                "base": round(base_conf, 2),
+                "distance_penalty": round(penalty, 2),
+                "adjust": round(adjust, 2),
+            },
         )
 
     def _nearest(

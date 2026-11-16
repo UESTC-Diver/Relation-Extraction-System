@@ -27,7 +27,7 @@ from .nlp.tokenizer import warmup
 from .routers import delivery, dictionary, extract, knowledge, meta, quality, review, rules
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 
 @asynccontextmanager
@@ -116,7 +116,7 @@ async def safety_guard(request: Request, call_next):
 
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
-    if guarded or path in ("/", "/app"):
+    if guarded or path in ("/", "/app", "/demo"):
         _access_log.info(
             json.dumps(
                 {

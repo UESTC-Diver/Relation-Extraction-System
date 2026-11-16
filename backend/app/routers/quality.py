@@ -9,16 +9,17 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import db, store
+from .. import db, insights, store
 from ..nlp.entity import canonical_name
 from ..nlp.evaluation import evaluate, load_gold
 from ..nlp.lexicon import ENTITY_TYPES, RELATION_MAP, apply_custom_triggers
-from ..nlp.pipeline import analyze
+from ..nlp.pipeline import analysis_lock, analyze
+from ..nlp import profiles
 
 router = APIRouter(prefix="/api", tags=["质量"])
 
 # apply_custom_triggers 原地改写全局索引，试跑必须让「基线 → 候选」两次
-# 抽取连续完成，不能与其他试跑交错。
+# 抽取连续完成，不能与其他试跑交错，也不能被正常抽取插入。
 _trial_lock = threading.Lock()
 
 
@@ -35,6 +36,7 @@ class TriggerCandidate(BaseModel):
 class TrialRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=20000)
     triggers: list[TriggerCandidate] = Field(default_factory=list)
+    profile: str = Field(default="general", description="试跑所用领域包，默认与线上一致")
 
 
 class VersionCreate(BaseModel):
@@ -116,8 +118,14 @@ def eval_run_detail(run_id: int) -> dict:
 
 @router.post("/rules/trial", summary="候选触发词 A/B 试跑，返回新增与消失的关系")
 def rules_trial(payload: TrialRequest) -> dict:
-    base = db.custom_triggers_by_relation()
-    candidate: dict[str, list[str]] = {k: list(v) for k, v in base.items()}
+    profile_key = (payload.profile or "general").strip()
+    if profile_key not in profiles.valid_keys():
+        raise HTTPException(status_code=400, detail=f"未知领域包：{profile_key}")
+    real_terms = db.list_custom_terms()
+    real_triggers = db.custom_triggers_by_relation()
+    # 领域包既参与基线也参与候选，才能单独看出「新增触发词」带来的差异
+    base_terms, base_triggers = profiles.merge(real_terms, real_triggers, profile_key)
+    candidate: dict[str, list[str]] = {k: list(v) for k, v in base_triggers.items()}
     added_triggers = []
     for item in payload.triggers:
         key = item.relation_key.strip()
@@ -131,14 +139,17 @@ def rules_trial(payload: TrialRequest) -> dict:
             bucket.append(trigger)
             added_triggers.append({"relation_key": key, "trigger": trigger})
 
-    terms = db.list_custom_terms()
-    with _trial_lock:
+    with _trial_lock, analysis_lock:
         try:
-            before = analyze(payload.text.strip(), custom_terms=terms, custom_triggers=base)
-            after = analyze(payload.text.strip(), custom_terms=terms, custom_triggers=candidate)
+            before = analyze(
+                payload.text.strip(), custom_terms=base_terms, custom_triggers=base_triggers
+            )
+            after = analyze(
+                payload.text.strip(), custom_terms=base_terms, custom_triggers=candidate
+            )
         finally:
             # 试跑不落库：把全局索引恢复成当前真实配置
-            apply_custom_triggers(base)
+            apply_custom_triggers(real_triggers)
 
     before_map = {_rel_key(r): r for r in before["relations"]}
     after_map = {_rel_key(r): r for r in after["relations"]}
@@ -147,6 +158,7 @@ def rules_trial(payload: TrialRequest) -> dict:
     unchanged = [after_map[k] for k in after_map.keys() & before_map.keys()]
     return {
         "text": payload.text.strip(),
+        "profile": profile_key,
         "triggers": added_triggers,
         "before": before["relations"],
         "after": after["relations"],
@@ -155,6 +167,17 @@ def rules_trial(payload: TrialRequest) -> dict:
         "added": added, "removed": removed, "unchanged": unchanged,
         "elapsed_ms": round(before["stats"]["elapsed_ms"] + after["stats"]["elapsed_ms"], 1),
     }
+
+
+@router.get("/insights", summary="规则体检：命中热区、从未命中的触发词与主动建议")
+def rule_insights() -> dict:
+    return insights.build()
+
+
+@router.get("/profiles", summary="领域包目录与词条 / 触发词规模")
+def domain_profiles() -> dict:
+    items = profiles.catalog()
+    return {"items": items, "total": len(items), "default": profiles.DEFAULT_PROFILE}
 
 
 @router.get("/rules/versions", summary="规则配置版本列表")

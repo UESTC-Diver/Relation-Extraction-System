@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS records (
     title         TEXT    NOT NULL DEFAULT '',
     text          TEXT    NOT NULL,
     source        TEXT    NOT NULL DEFAULT 'text',
+    profile       TEXT    NOT NULL DEFAULT 'general',
     char_count    INTEGER NOT NULL DEFAULT 0,
     sentence_count INTEGER NOT NULL DEFAULT 0,
     entity_count  INTEGER NOT NULL DEFAULT 0,
@@ -160,6 +161,20 @@ CREATE TABLE IF NOT EXISTS review_snapshots (
     decisions_json TEXT    NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS idx_snapshots_record ON review_snapshots (record_id);
+
+-- 规则体检：人工校正中被删掉的关系留痕，用来统计「哪类关系最常被否掉」。
+-- 不覆盖原始抽取快照，只在保存校正时追加，删库同步清理。
+CREATE TABLE IF NOT EXISTS relation_deletions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id      INTEGER NOT NULL,
+    relation       TEXT    NOT NULL,
+    relation_label TEXT    NOT NULL DEFAULT '',
+    head           TEXT    NOT NULL DEFAULT '',
+    tail           TEXT    NOT NULL DEFAULT '',
+    rule_base      TEXT    NOT NULL DEFAULT '',
+    created_at     TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deletions_relation ON relation_deletions (relation);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
@@ -372,6 +387,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE records ADD COLUMN review_status TEXT NOT NULL DEFAULT 'draft'"
         )
+    # 领域包记录在抽取当时用的那一份，历史记录与离线报告才能说明「用什么抽的」。
+    if "profile" not in record_cols:
+        conn.execute("ALTER TABLE records ADD COLUMN profile TEXT NOT NULL DEFAULT 'general'")
 
 
 def init_db() -> None:
@@ -425,8 +443,10 @@ def save_record(
     source: str = "text",
     title: str = "",
     store_relations: bool = True,
+    profile: str = "",
 ) -> int:
     stats = result.get("stats", {})
+    profile_key = profile or result.get("profile") or "general"
     entities = result.get("entities", [])
     relations = result.get("relations", [])
     if not title:
@@ -434,15 +454,16 @@ def save_record(
     with connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO records (title, text, source, char_count, sentence_count,
+            INSERT INTO records (title, text, source, profile, char_count, sentence_count,
                                  entity_count, relation_count, entity_types,
                                  entities_json, elapsed_ms, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 title,
                 result.get("text", ""),
                 source,
+                profile_key,
                 stats.get("char_count", 0),
                 stats.get("sentence_count", 0),
                 stats.get("entity_count", 0),
@@ -477,6 +498,7 @@ def _record_row(row: sqlite3.Row) -> dict[str, Any]:
         "title": row["title"],
         "text": row["text"],
         "source": row["source"],
+        "profile": row["profile"] if "profile" in row.keys() else "general",
         "char_count": row["char_count"],
         "sentence_count": row["sentence_count"],
         "entity_count": row["entity_count"],
@@ -495,8 +517,8 @@ def _list_record_rows(conn, clauses: list[str], params: list, limit: int, offset
     # SELECT * 会把它们白白读进内存再丢掉。
     rows = conn.execute(
         f"""SELECT id, title, substr(text, 1, 200) AS text, source, tags,
-                   char_count, sentence_count, entity_count, relation_count,
-                   elapsed_ms, created_at
+                   review_status, profile, char_count, sentence_count,
+                   entity_count, relation_count, elapsed_ms, created_at
             FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
         [*params, limit, offset],
     ).fetchall()
@@ -552,10 +574,16 @@ def get_record(record_id: int) -> dict[str, Any] | None:
             "SELECT * FROM relations WHERE record_id = ? ORDER BY confidence DESC, id ASC",
             (record_id,),
         ).fetchall()
+    # 解释字段按同一份纯函数重建：SQLite 只存结果字段，不存逐步分值。
+    from .nlp.explanation import attach as attach_explanations
+
     data = _record_row(row)
+    from .nlp.profiles import get as get_profile
+
+    data["profile_label"] = get_profile(data.get("profile"))["label"]
     data["entities"] = json.loads(row["entities_json"] or "[]")
     data["entity_type_counts"] = json.loads(row["entity_types"] or "{}")
-    data["relations"] = [
+    data["relations"] = attach_explanations({"relations": [
         {
             "id": f"r{r['id']}",
             "head": r["head"],
@@ -573,7 +601,7 @@ def get_record(record_id: int) -> dict[str, Any] | None:
             "rule_base": r["rule_base"] or "trigger",
         }
         for r in rels
-    ]
+    ]})["relations"]
     return data
 
 
@@ -609,6 +637,32 @@ def replace_relations(
             return False
         previous = int(exists["relation_count"] or 0)
         previous_entities = int(exists["entity_count"] or 0)
+        # 规则体检：把人工删掉的自动抽取关系记下来，按关系类型汇总成改进建议。
+        # 只记 rule_base != manual，人工新增行被撤销不算「规则误抽」。
+        old_rows = conn.execute(
+            """SELECT head, tail, relation, relation_label, rule_base
+               FROM relations WHERE record_id = ? AND rule_base != 'manual'""",
+            (record_id,),
+        ).fetchall()
+        kept = {
+            (str(r.get("head", "")), str(r.get("relation", "")), str(r.get("tail", "")))
+            for r in relations
+        }
+        dropped = [
+            (
+                record_id, old["relation"], old["relation_label"],
+                old["head"], old["tail"], old["rule_base"], _now(),
+            )
+            for old in old_rows
+            if (old["head"], old["relation"], old["tail"]) not in kept
+        ]
+        if dropped:
+            conn.executemany(
+                """INSERT INTO relation_deletions
+                   (record_id, relation, relation_label, head, tail, rule_base, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                dropped,
+            )
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         _insert_relations(conn, record_id, relations)
 
@@ -649,6 +703,7 @@ def delete_record(record_id: int) -> bool:
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         conn.execute("DELETE FROM review_decisions WHERE record_id = ?", (record_id,))
         conn.execute("DELETE FROM review_snapshots WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM relation_deletions WHERE record_id = ?", (record_id,))
         cur = conn.execute("DELETE FROM records WHERE id = ?", (record_id,))
         if cur.rowcount > 0 and totals:
             _bump_counters(
@@ -667,6 +722,7 @@ def clear_records() -> int:
         conn.execute("DELETE FROM relations")
         conn.execute("DELETE FROM review_decisions")
         conn.execute("DELETE FROM review_snapshots")
+        conn.execute("DELETE FROM relation_deletions")
         cur = conn.execute("DELETE FROM records")
         conn.execute(
             """UPDATE counters SET records = 0, chars = 0, entities = 0,

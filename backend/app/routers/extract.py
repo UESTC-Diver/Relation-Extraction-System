@@ -19,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import db
 from ..nlp.lexicon import RELATION_RULES
 from ..nlp.pipeline import analyze
+from ..nlp import profiles as domain_profiles
 
 router = APIRouter(prefix="/api", tags=["抽取"])
 
@@ -58,6 +59,7 @@ class ExtractRequest(BaseModel):
     text: str = Field(..., description="待抽取的中文新闻文本")
     title: str | None = Field(default=None, description="自定义标题，留空则自动截取")
     save: bool = Field(default=True, description="是否写入历史记录")
+    profile: str = Field(default="general", description="领域包：general / finance / legal")
 
 
 class ExtractResponse(BaseModel):
@@ -73,6 +75,7 @@ class BatchItem(BaseModel):
 class BatchRequest(BaseModel):
     items: list[BatchItem] = Field(default_factory=list, max_length=MAX_BATCH_ITEMS)
     save: bool = Field(default=True, description="是否把每篇写入历史")
+    profile: str = Field(default="general", description="领域包：general / finance / legal")
 
 
 _PUNCT = set("，。、；：！？（）《》〈〉「」『』“”‘’…—·～￥％")
@@ -259,6 +262,13 @@ async def _read_upload(file: UploadFile) -> tuple[str, str]:
     return text, name.rsplit(".", 1)[0]
 
 
+def _check_profile(profile: str) -> str:
+    key = (profile or "general").strip()
+    if key not in domain_profiles.valid_keys():
+        raise HTTPException(status_code=400, detail=f"未知领域包：{key}")
+    return key
+
+
 def _run(
     text: str,
     title: str | None,
@@ -266,19 +276,26 @@ def _run(
     source: str,
     custom_terms: list[dict] | None = None,
     custom_triggers: dict[str, list[str]] | None = None,
+    profile: str = "general",
 ) -> ExtractResponse:
     text = text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="文本内容为空")
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=413, detail=f"文本过长（{len(text)} 字），请控制在 {MAX_CHARS} 字以内")
-    result = analyze(
-        text,
-        custom_terms=custom_terms if custom_terms is not None else db.list_custom_terms(),
-        custom_triggers=custom_triggers if custom_triggers is not None else db.custom_triggers_by_relation(),
+    key = _check_profile(profile)
+    terms, triggers = domain_profiles.merge(
+        custom_terms if custom_terms is not None else db.list_custom_terms(),
+        custom_triggers if custom_triggers is not None else db.custom_triggers_by_relation(),
+        key,
     )
+    result = analyze(text, custom_terms=terms, custom_triggers=triggers)
     result["source"] = source
-    record_id = db.save_record(result, source=source, title=title or "") if save else None
+    result["profile"] = key
+    result["profile_label"] = domain_profiles.get(key)["label"]
+    record_id = (
+        db.save_record(result, source=source, title=title or "", profile=key) if save else None
+    )
     if record_id:
         result["record_id"] = record_id
     return ExtractResponse(record_id=record_id, result=result)
@@ -321,12 +338,15 @@ def _aggregate_in_memory(results: list[dict]) -> dict:
     }
 
 
-def _run_batch(items: list[tuple[str, str]], save: bool, source: str) -> dict:
+def _run_batch(
+    items: list[tuple[str, str]], save: bool, source: str, profile: str = "general"
+) -> dict:
     """逐篇抽取并汇总；单篇失败不打断整批。"""
     if not items:
         raise HTTPException(status_code=400, detail="批量内容为空")
     if len(items) > MAX_BATCH_ITEMS:
         raise HTTPException(status_code=413, detail=f"单批最多 {MAX_BATCH_ITEMS} 篇")
+    key = _check_profile(profile)
     custom_terms = db.list_custom_terms()
     custom_triggers = db.custom_triggers_by_relation()
 
@@ -337,7 +357,7 @@ def _run_batch(items: list[tuple[str, str]], save: bool, source: str) -> dict:
         label = title or (text.strip()[:20] + "…")
         try:
             with _extract_slot():
-                res = _run(text, title, save, source, custom_terms, custom_triggers)
+                res = _run(text, title, save, source, custom_terms, custom_triggers, key)
         except HTTPException as err:
             summaries.append({
                 "index": index, "title": label, "record_id": None,
@@ -377,32 +397,37 @@ def _run_batch(items: list[tuple[str, str]], save: bool, source: str) -> dict:
 @router.post("/extract", response_model=ExtractResponse, summary="粘贴文本抽取")
 def extract_text(payload: ExtractRequest) -> ExtractResponse:
     with _extract_slot():
-        return _run(payload.text, payload.title, payload.save, "text")
+        return _run(payload.text, payload.title, payload.save, "text", profile=payload.profile)
 
 
 @router.post("/extract/file", response_model=ExtractResponse, summary="上传文本文件抽取")
 async def extract_file(
     file: UploadFile = File(..., description=".txt / .md / .text / .pdf / .docx，纯本地解析"),
     save: bool = True,
+    profile: str = "general",
 ) -> ExtractResponse:
     text, title = await _read_upload(file)
     if not _extract_slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="抽取任务过多，请稍后重试")
     try:
-        return await run_in_threadpool(_run, text, title, save, "file")
+        return await run_in_threadpool(_run, text, title, save, "file", None, None, profile)
     finally:
         _extract_slots.release()
 
 
 @router.post("/extract/batch", summary="批量抽取多段文本")
 def extract_batch(payload: BatchRequest) -> dict:
-    return _run_batch([(item.text, item.title) for item in payload.items], payload.save, "text")
+    return _run_batch(
+        [(item.text, item.title) for item in payload.items],
+        payload.save, "text", payload.profile,
+    )
 
 
 @router.post("/extract/batch/files", summary="批量上传多个文本文件")
 async def extract_batch_files(
     files: list[UploadFile] = File(..., description="多个 .txt / .md / .pdf / .docx 文件"),
     save: bool = True,
+    profile: str = "general",
 ) -> dict:
     if len(files) > MAX_BATCH_ITEMS:
         raise HTTPException(status_code=413, detail=f"单批最多 {MAX_BATCH_ITEMS} 个文件")
@@ -410,7 +435,7 @@ async def extract_batch_files(
     for file in files:
         text, title = await _read_upload(file)
         items.append((text, title))
-    return await run_in_threadpool(_run_batch, items, save, "file")
+    return await run_in_threadpool(_run_batch, items, save, "file", profile)
 
 
 @router.get("/health", summary="健康检查")
@@ -418,8 +443,9 @@ def health() -> dict:
     return {
         "status": "ok",
         "engine": "rule-based-cn-nlp",
-        "version": "1.4.0",
+        "version": "1.5.0",
         "relation_types": len(RELATION_RULES),
+        "profiles": domain_profiles.valid_keys(),
         "custom_terms": len(db.list_custom_terms()),
         "custom_rules": len(db.list_custom_rules()),
         "records": db.overview()["records"],

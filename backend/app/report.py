@@ -53,6 +53,13 @@ border-radius:3px;font-size:11px;text-align:center}
 .rv-q{background:#fdf0d5;color:#8a5a10}
 .rv-no{background:#f7e2e0;color:#a8322a}
 .rv-note{color:var(--muted);font-size:12px;margin-left:8px}
+.ex-list{background:var(--surface);border:1px solid var(--line)}
+.ex-item{padding:12px 16px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.7}
+.ex-item:first-child{border-top:none}
+.ex-head{font-weight:500;color:var(--ink);margin-bottom:4px}
+.ex-kv{color:var(--ink2)}
+.ex-kv em{font-style:normal;color:var(--muted);display:inline-block;min-width:64px}
+.ex-formula{color:var(--red);font-variant-numeric:tabular-nums}
 footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--line);
 font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:16px}
 footer a{color:var(--red)}
@@ -158,6 +165,42 @@ def _review_html(review: dict | None) -> str:
     return f'<h2>复核结论</h2><div class="rv"><div class="rv-bar">{bar}</div>{body}</div>'
 
 
+def _explanation_html(relations: list[dict]) -> str:
+    """「为什么抽出来」：把每条关系的命中路径与置信度构成写进离线报告。"""
+    from .nlp.explanation import explain
+
+    rows = []
+    for r in relations:
+        exp = r.get("explanation") or explain(r)
+        parts = exp.get("confidence_parts") or {}
+        template = exp.get("template")
+        template_html = (
+            f'<div class="ex-kv"><em>命中模板</em>{_esc(template)}</div>' if template else ""
+        )
+        rows.append(
+            '<div class="ex-item">'
+            f'<div class="ex-head">{_esc(r.get("head"))} — '
+            f'{_esc(r.get("relation_label") or r.get("relation"))} — '
+            f'{_esc(r.get("tail"))}</div>'
+            f'<div class="ex-kv"><em>抽取策略</em>{_esc(exp.get("strategy"))}'
+            f'（{_esc(exp.get("strategy_how"))}）</div>'
+            f'<div class="ex-kv"><em>命中触发词</em>{_esc(exp.get("matched"))}</div>'
+            f'{template_html}'
+            f'<div class="ex-kv"><em>类型约束</em>{_esc(exp.get("type_constraint"))}</div>'
+            f'<div class="ex-kv"><em>置信度</em>'
+            f'<span class="ex-formula">{_esc(parts.get("formula", ""))}</span></div>'
+            "</div>"
+        )
+    if not rows:
+        return ""
+    return (
+        "<h2>为什么抽出来</h2>"
+        '<p class="note">每条关系列出命中的策略、触发词、类型约束与置信度构成；'
+        "句式模板命中会额外给出模板骨架。</p>"
+        f'<div class="ex-list">{"".join(rows)}</div>'
+    )
+
+
 def build_report_html(
     data: dict, readonly_link: bool = False, review: dict | None = None
 ) -> str:
@@ -212,6 +255,9 @@ def build_report_html(
         else "本机处理 · 数据不出本机"
     )
     review_html = _review_html(review)
+    explanation_html = _explanation_html(relations)
+    profile_label = data.get("profile_label") or ""
+    profile_note = f" · 领域包：{_esc(profile_label)}" if profile_label else ""
     return f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -221,7 +267,7 @@ def build_report_html(
   <p class="eyebrow">中文关系抽取系统 · 分析报告</p>
   <h1>{_esc(title)}</h1>
   <p class="meta">生成于 {_esc(generated)}
-  {f'· 历史记录 #{_esc(record_id)}' if record_id else '· 预览结果（未入库）'}</p>
+  {f'· 历史记录 #{_esc(record_id)}' if record_id else '· 预览结果（未入库）'}{profile_note}</p>
 </header>
 <h2>结果概览</h2><div class="cards">{card_html}</div>
 {review_html}
@@ -232,6 +278,7 @@ def build_report_html(
 <h2>关系三元组与证据句</h2>
 <table><thead><tr><th>头实体</th><th>关系</th><th>尾实体</th><th>置信度</th><th>证据句</th></tr></thead>
 <tbody>{rel_rows}</tbody></table>
+{explanation_html}
 <h2>实体清单</h2>
 <table><thead><tr><th>原文写法</th><th>类型</th><th>归一写法</th></tr></thead>
 <tbody>{ent_rows}</tbody></table>

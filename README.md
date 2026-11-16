@@ -4,20 +4,21 @@
 >
 > 前端 **Vue 3 + Element Plus** ｜ 后端 **FastAPI + SQLite** ｜ NLP 引擎 **jieba + 词典 + 规则模板**（离线、确定性、可解释）
 
-用户粘贴一段中文新闻（或上传 `.txt / .pdf / .docx` 文件），系统自动完成**分句 → 分词 → 实体识别 → 关系抽取 → 三元组输出 → 图谱可视化**，并以「实体高亮标注 / 三元组表格 / 节点-关系图 / 统计洞察」四种形式呈现。历史结果持久化到 SQLite，并在其上长出四层能力：**跨文档知识库**（全局实体画像、跨文档关系网络、标签与冲突复核）、**质量闭环**（界面化评测、规则 A/B 试跑、配置版本回滚、实体级校正）、**复核闭环**（逐条通过 / 存疑 / 驳回、定稿快照、带签名的只读分享）、**离线交付**（单文件 HTML 报告、独立只读分享页、项目包导入导出、后台批量任务）。对外部署另有一层最小安全集（来源白名单、限流、上传沙箱、结构化日志）。全部在本机完成，不联网、不调用云端模型。
+用户粘贴一段中文新闻（或上传 `.txt / .pdf / .docx` 文件），系统自动完成**分句 → 分词 → 实体识别 → 关系抽取 → 三元组输出 → 图谱可视化**，并以「实体高亮标注 / 三元组表格 / 节点-关系图 / 统计洞察」四种形式呈现。历史结果持久化到 SQLite，并在其上长出五层能力：**跨文档知识库**（全局实体画像、跨文档关系网络、标签与冲突复核）、**质量闭环**（界面化评测、规则 A/B 试跑、规则体检与主动建议、配置版本回滚、实体级校正）、**复核闭环**（逐条通过 / 存疑 / 驳回、定稿快照、带签名的只读分享）、**离线交付**（单文件 HTML 报告、独立只读分享页、项目包导入导出、后台批量任务）、**可解释性**（每条关系都能展开命中策略、触发词、模板骨架、类型约束与置信度构成）。对外部署另有一层最小安全集（来源白名单、限流、上传沙箱、结构化日志）。全部在本机完成，不联网、不调用云端模型。
 
-站点分成两层，首屏不直接摆业务表单：
+站点分成三层，首屏不直接摆业务表单：
 
 | 路径 | 页面 | 职责 |
 | --- | --- | --- |
-| `/` | 产品首页（`LandingPage.vue`） | 用可交互的真实结果说明系统做什么，并把访问者送到工作台 |
+| `/` | 产品首页（`LandingPage.vue`） | 用可交互的真实结果说明系统做什么，并把访问者送到静态试用或工作台 |
+| `/demo` | 静态试用沙箱（`DemoSandbox.vue`） | 四篇预置样例的真实抽取结果：换样例、点句子、看命中路径、导出都在浏览器里完成，**零接口请求、断网可用**；不能输入自己的文本 |
 | `/app` | 抽取工作台（`App.vue`） | 实际输入、抽取、核对、导出、查历史、知识库与质量工具 |
 | `/app?record=12#triples` | 结果深链 | 打开即复现第 12 条历史记录并停在三元组页；`?q=实体名` 可带筛选 |
 | `/report/12?expires=…&token=…` | 独立只读报告页 | 不加载工作台 JS 的报告，只有结果、证据与复核结论；「复制只读报告链接」生成带签名与有效期的 URL |
 | `/#entities`、`/#triples`、`/#graph`、`/#stats` | 工作台对应页签 | 兼容书签与旧链接 |
 | 其他路径 | 品牌 404 | 引导回首页或工作台 |
 
-首页用到的都是真实产物：演示三元组由 `app.nlp.pipeline.analyze()` 对内置示例跑出，四个视图是 `docs/screenshots/` 里的实际截图；没有编造客户数、证言或价格，也不放评测报告、指标堆砌与操作说明——界面本身可点、可切换、可下钻。初始加载不触碰业务 API，后端未启动时也能正常展示；只有主动点「调用接口重跑」才会打 `/api/extract`。评测数据只在 [`backend/eval/REPORT.md`](backend/eval/REPORT.md) 与本文第九节维护，不进首页。
+首页与静态试用页用到的都是真实产物：演示三元组由 `app.nlp.pipeline.analyze()` 对内置示例跑出，四个视图是 `docs/screenshots/` 里的实际截图；没有编造客户数、证言或价格，也不放评测报告、指标堆砌与操作说明——界面本身可点、可切换、可下钻。两页初始加载都不触碰业务 API，后端未启动时也能正常展示；首页只有主动点「调用接口重跑」才会打 `/api/extract`，`/demo` 则**一个请求都不发**（数据在 `frontend/src/data/demo-samples.json`，由真实运行导出）。评测数据只在 [`backend/eval/REPORT.md`](backend/eval/REPORT.md) 与本文第九节维护，不进首页。
 
 ![产品首页](docs/screenshots/00-landing.png)
 
@@ -38,11 +39,15 @@
 | **批量抽取** | 同步模式一次最多 20 篇：多文件上传（编码逐个自动识别）或按空行分隔的多段文本；文本模式可切「**后台运行**」，最多 100 篇，提交后立即返回任务 id，前端每 500ms 轮询 `/api/tasks/{id}` 显示进度，关掉对话框不中断执行；逐篇显示实体数 / 关系数 / 耗时，单篇失败不打断整批，并给出**跨文档聚合**（高频实体、高频关系、高频三元组） |
 | **跨文档知识库** | 「知识库」对话框三页签：① **全局实体**——按名字/类型检索，画像里列出别名、参与的全部关系、来源文档与首次/最近出现时间，可载入该记录或在当前工作台按实体筛选；② **跨文档图谱**——把多份文档的关系按归一化实体名合并成一张全局网络，可按关系类型收敛；③ **标签与复核**——给记录打标签、查看**跨文档关系冲突**（同一实体对被判成不同关系）与**低置信度复核队列**（默认阈值 0.8）。全局实体直接查 `relations` 的归一字段，不另建实体表，因此人工校正/删除/导入后无需同步 |
 | **质量闭环** | ① **界面化评测台**——一键跑 P/R/F1 与 Macro-F1，展示命中/误抽/漏抽、F1 回归曲线、分关系类型指标、逐条用例与漏抽/误抽明细，也支持传入自定义金标准；② **规则实验室**——给一段文本填候选触发词，做基线与候选的 A/B 试跑并列出「新增 / 消失 / 不变」三栏 diff，试跑不落库、不改当前配置；③ **配置版本**——把当前触发词与词典存成快照，一键回滚并立即热更新索引；评测历史与快照都进库 |
+| **规则体检与主动建议** | `GET /api/insights` 扫一遍 `relations`、`relation_deletions`、`review_decisions`、`custom_rules`，给出命中热区（触发词 / 策略 / 关系）、**从未命中过的触发词**、人工删除最多的关系与低置信度占比，并直接生成可执行建议（例如「「任职于」有 38 个触发词从未命中」）。规则实验室第二个页签展示这些结论，点任一未命中词就带进 A/B 候选列表；空库时只提示先积累数据，不硬凑结论 |
+| **可解释性** | 每条三元组带一个 `explanation`：命中策略与判定方式、命中的触发词、句式模板骨架（如 `A宣布正式收购了B`）、类型约束（`组织机构 → 组织机构`）、置信度构成公式、证据句与 4 步判定链。三元组表格展开行即可看到；历史记录由同一份纯函数重建，离线报告也有「为什么抽出来」区块。解释字段不参与判定，P/R/F1 不变 |
 | **复核 → 定稿 → 分享** | 顶栏「复核」显示进度（已复核 / 总数），对话框里逐条给三元组打「通过 / 存疑 / 驳回」并写批注，可按结论筛选；状态按 `draft → in_review → final` 流转，**定稿生成不可变快照并锁定**关系与实体的写入（后端 409 兜底），要改稿先「解锁」退回复核中；三元组表格同步显示复核徽标；复核结论会一起写进单文件 HTML 报告与只读报告页 |
 | **上线最小安全集** | CORS 默认只放行本机开发源（不再 `*`）、per-IP 滑动窗口限流、全局请求体上限、上传扩展名 + magic bytes 双检、PDF 页数上限与解析硬超时、DOCX 解压体积检查、结构化访问日志与 `X-Request-ID`；只读报告页 `noindex` + `private, no-store`，分享链接由服务端 HMAC 签名并带有效期（生产配置 `APP_REPORT_SECRET` 后强制校验）；完整配置清单与生产 checklist 见 `backend/.env.example` |
 | **离线交付与集成** | `POST /api/report` 生成**单文件 HTML**（统计卡 + 静态环形关系图 + 类型分布 + 三元组证据 + 复核结论 + 原文，断网可看）；`/report/{id}` 是**独立只读页**，不加载任何前端 JS，点「复制只读报告链接」拿到的是带签名与有效期的 URL；**项目包**把记录、三元组、实体校正、词典、触发词、规则版本、评测历史与金标准打成一份 JSON，`merge` 追加或 `replace` 覆盖导入；PDF / DOCX 走本地解析库取文字层 |
 | **结果深链** | `/app?record=12#triples` 直接复现历史记录，`?q=实体名` 带三元组筛选；点「复制分享链接」把当前结果、页签与筛选一起写进 URL |
+| **静态试用** | `/demo` 零后端请求：4 篇预置样例（通用 ×2、财经、法律）、左原文逐句 + 实体红笔标注、右该句三元组与命中路径、关系分布条、JSON / CSV 前端导出。仅加载 Vue 运行时与该页 chunk，不下载 Element Plus 与图表库；断网、后端未启动、静态托管在 CDN 上都能完整工作 |
 | **领域配置** | 界面可增删**自定义实体词条**（人物 / 机构 / 地名 / 产品等）与**自定义关系触发词**（给 19 类内置规则追加领域说法），两者都是保存后下一次抽取立即生效，无需改代码或重启；可保存/回滚配置版本，句式模板仍由代码维护 |
+| **领域包** | `general / finance / legal` 三套领域包，以「额外词条 + 额外触发词」叠加在固定 19 类关系之上：财经包补「吃下 / 举牌 / 战投 / 对赌」等 18 个说法，法律包补「仲裁 / 立案 / 达成和解」等 11 个。工作台、批量、后台任务、规则试跑都可选包，**记录会存下当时用的包**，历史与报告能说明「这条是用什么抽的」；`general` 为空集，默认路径与 1.4.0 逐字节等价 |
 | **效果评测** | `eval/` 下提供 10 段人工标注金标准集；CLI（`eval/run_eval.py --json`）与界面评测台共用同一套 `app/nlp/evaluation.py` 算法，输出整体与分类型指标及漏抽/误抽明细，界面侧额外保留历史回归曲线 |
 | **交互体验** | 内置 4 条中文新闻示例（一键切换并自动抽取）、空状态引导、字数计数、错误提示、响应式布局（≤1120px 单列，≤720px 顶栏与页签自动换行且 390px 无横向溢出）；结果与证据双向联动（表格→原文定位、图谱→三元组下钻、统计→原文定位）；结果就绪后左栏自动收窄为摘要卡；长文本按 40 块分批挂载并配抽取骨架屏；图谱超过 80 个节点自动降级为环形布局并关闭力导向动画与标签 |
 
@@ -83,6 +88,20 @@
 1.4.0 新增的复核台（1440×900 实际截图）：进度条、逐条结论、批注与状态流转集中在同一个对话框，三元组表格里也会同步显示复核徽标。
 
 ![复核与定稿](docs/screenshots/13-review.png)
+
+1.5.0 新增的三处界面（1440 宽实际截图）：
+
+`/demo` 静态试用沙箱 —— 四篇样例、原文逐句、实体红笔标注、该句三元组与关系分布；整页不发一个接口请求。
+
+![静态试用沙箱](docs/screenshots/14-demo.png)
+
+三元组展开行即「为什么抽出来」——命中策略、模板骨架、类型约束、置信度构成与 4 步判定链，历史记录与离线报告同一口径。
+
+![为什么抽出来](docs/screenshots/15-explain.png)
+
+规则实验室的「规则体检」页签 —— 历史摘要、系统建议、命中热区与从未命中的触发词；点任一未命中词即可带进 A/B 候选列表。
+
+![规则体检](docs/screenshots/16-rules-insights.png)
 
 两个交互设计点（截图里是静态的，实际是联动的）：
 
@@ -143,7 +162,8 @@
 │  │  │                       #   评测历史、规则版本、任务状态、项目包导入导出
 │  │  ├─ security.py          # 来源白名单、限流、请求体上限、报告分享 HMAC 签名
 │  │  ├─ review_store.py      # 复核决策、状态流转、定稿快照（独立存储层）
-│  │  ├─ report.py            # 单文件离线 HTML（内嵌 CSS + 静态 SVG + 复核结论区）
+│  │  ├─ insights.py          # 规则体检：命中热区、从未命中的触发词、人工删除留痕与建议
+│  │  ├─ report.py            # 单文件离线 HTML（内嵌 CSS + 静态 SVG + 复核结论 + 解释区）
 │  │  ├─ samples.py           # 4 条内置中文新闻示例
 │  │  ├─ nlp/
 │  │  │  ├─ lexicon.py        # 实体词典、19 类关系规则、句式模板、触发词热更新
@@ -151,6 +171,8 @@
 │  │  │  ├─ entity.py         # 实体识别（词典/后缀/上下文/词性 四通道 + 重叠消解）
 │  │  │  ├─ relation.py       # 关系抽取（句式模板优先、触发词扫描兜底、去重与置信度）
 │  │  │  ├─ evaluation.py     # P/R/F1 评测核心，CLI 与界面评测台共用
+│  │  │  ├─ explanation.py    # 把一条三元组还原成「为什么抽出来」（纯函数，不参与判定）
+│  │  │  ├─ profiles.py       # 领域包 general / finance / legal 的词条与触发词叠加
 │  │  │  └─ pipeline.py       # analyze(text, custom_terms, custom_triggers) 流水线出口
 │  │  └─ routers/
 │  │     ├─ extract.py        # /api/extract、/extract/file、/extract/batch*、/api/health
@@ -168,13 +190,14 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # CLI 入口，调用 nlp/evaluation.py（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（67 条，临时库隔离）
+│  ├─ tests/                  # pytest API 回归测试（86 条，临时库隔离）
 │  │  ├─ conftest.py          # 每个用例把 db.DB_PATH 指向 tmp_path，不碰真实 app.db
 │  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越（16 条）
 │  │  ├─ test_features.py     # FTS5/增量计数/批量/自定义规则/健康信息（12 条）
 │  │  ├─ test_features_v13.py # 知识库/质量闭环/离线交付/后台任务/PDF·DOCX（18 条）
 │  │  ├─ test_corrections.py  # 词典/快照/人工校正 P1 回归（9 条）
-│  │  └─ test_features_v14.py # 安全集与复核定稿闭环（12 条）
+│  │  ├─ test_features_v14.py # 安全集与复核定稿闭环（12 条）
+│  │  └─ test_features_v15.py # 解释字段/规则体检/领域包/静态试用数据（19 条）
 │  ├─ pytest.ini              # testpaths 与 pythonpath
 │  ├─ ruff.toml               # 只开 F / E9，聚焦未定义名与未使用导入
 │  ├─ requirements.txt        # 含可选本地解析库 pymupdf / python-docx
@@ -189,8 +212,10 @@
 │  │  ├─ api/client.js        # Axios 封装（抽取/批量/记录/规则/知识库/质量/交付）
 │  │  ├─ utils/export.js      # 导出构建：CSV / JSON / MD / GraphML / Cypher
 │  │  ├─ data/landing-demo.json # 首页演示数据：pipeline 真实抽取结果与关系目录
+│  │  ├─ data/demo-samples.json # 静态试用数据：4 篇样例的真实 analyze() 输出（含解释）
 │  │  └─ components/
 │  │     ├─ LandingPage.vue    # 产品首页：接口契约面板、价值段、能力切换器、CTA
+│  │     ├─ DemoSandbox.vue     # /demo 零后端沙箱：换样例、点句子、看解释、前端导出
 │  │     ├─ TextWorkbench.vue   # 文本输入、示例、上传（含 PDF/DOCX）、清空
 │  │     ├─ EntityAnnotator.vue # 正文实体高亮 + 长文本分批渲染 + 实体校正入口
 │  │     ├─ TripleTable.vue     # 三元组表格（过滤/校正/复核徽标/定稿锁定/导出 CSV）
@@ -201,13 +226,13 @@
 │  │     ├─ BatchDialog.vue     # 批量抽取：文件/文本队列、后台任务进度、跨文档聚合
 │  │     ├─ KnowledgeDialog.vue # 知识库：全局实体 / 跨文档图谱 / 标签与复核
 │  │     ├─ EvalDialog.vue      # 评测台：指标卡、F1 回归曲线、漏抽误抽明细
-│  │     ├─ RulesLabDialog.vue  # 规则实验室：A/B diff、应用、版本保存与回滚
+│  │     ├─ RulesLabDialog.vue  # 规则实验室：领域包、A/B diff、规则体检、版本回滚
 │  │     ├─ EntityFixDialog.vue # 实体级校正：边界 / 类型 / 归一写法与增删
 │  │     └─ ReviewDialog.vue    # 复核台：逐条结论、批注、状态流转、定稿与分享
-│  ├─ public/                 # favicon.svg、fonts/（本地西文字体）、media/（首页视图裁切图）
+│  ├─ public/                 # favicon.svg、robots.txt、fonts/（本地西文字体）、media/
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
-├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张实际截图
+├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张，实际截图
 └─ README.md
 ```
 
@@ -233,7 +258,7 @@ python main.py                # 一键启动（推荐），访问 http://127.0.0
 `requirements.txt` 里的 `pymupdf` 与 `python-docx` 只用于 PDF / DOCX 上传的本地文字层解析；纯文本抽取不依赖它们，未安装时这两种格式会返回明确的错误提示，其余功能不受影响。所有解析都在本机完成，不上传、不调用云端模型。
 
 - 接口文档：<http://127.0.0.1:8000/docs>
-- 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `1.4.0`）
+- 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `1.5.0`）
 - 只读报告示例：<http://127.0.0.1:8000/report/12>（记录存在时返回完整离线报告页）
 
 ### 3A. 前端开发模式（热更新）
@@ -256,7 +281,7 @@ cd ../backend
 python -m uvicorn app.main:app --port 8000
 ```
 
-后端检测到 `frontend/dist` 后会自动托管静态资源，**直接访问 <http://127.0.0.1:8000/> 首页即可**（无需另起前端服务）；点「进入工作台」或访问 <http://127.0.0.1:8000/app> 开始抽取。上传前请确认 `dist/` 中有 `favicon.svg`、`fonts/`、`media/` 与最新 `assets/`，它们都是首页所需资源。
+后端检测到 `frontend/dist` 后会自动托管静态资源，**直接访问 <http://127.0.0.1:8000/> 首页即可**（无需另起前端服务）；点「进入工作台」或访问 <http://127.0.0.1:8000/app> 开始抽取，访问 <http://127.0.0.1:8000/demo> 可先看零后端的静态样例。上传前请确认 `dist/` 中有 `favicon.svg`、`robots.txt`、`fonts/`、`media/` 与最新 `assets/`，它们都是首页所需资源。
 
 ### 3C. 对外部署的最小配置
 
@@ -300,7 +325,7 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 cd backend
 python -m pip install -r requirements-dev.txt
 python -m ruff check app tests   # lint 门禁
-python -m pytest -q              # 67 passed
+python -m pytest -q              # 86 passed
 python eval/run_eval.py --json   # F1 ≥ 0.95
 ```
 
@@ -311,9 +336,9 @@ python eval/run_eval.py --json   # F1 ≥ 0.95
 - `test_api.py`（16 条）：内置示例结果基线（18 实体 / 9 三元组）、空文本 400、超限 413、非法扩展名 415、记录不存在 404、`save=false` 不写库、UTF-8 / GBK / BIG5 / UTF-16 上传后逐字比对、SPA 静态路由不能把源码 / README / 数据库拖走。
 - `test_features.py`（12 条）：FTS5 中文子串检索与语法字符降级、增量计数在保存 / 校正 / 删除 / 清空后与库内真值一致、批量文本与批量文件（混合编码）、单篇失败不打断整批、自定义触发词热生效与删除后失效、规则校验、健康信息字段、快照校正写回。
 - `test_features_v13.py`（18 条）：全局实体画像与跨文档图谱合并、标签设置与筛选、冲突检测、低置信度复核队列、评测接口与历史、自定义金标准、规则 A/B 试跑不落库、配置版本回滚、实体级校正写回、单文件离线 HTML（无脚本外链）、只读报告页、项目包 merge / replace 导入、后台批量任务进度与结果、PDF / DOCX 本地解析上传。
-- `test_corrections.py`（9 条）：词典 / 快照 / 人工校正的 P1 回归。
 - `test_features_v14.py`（12 条）：CORS 默认白名单、复核状态与结论汇总、状态机必须走 `/finalize`、定稿锁定三处写接口与快照不可变、报告含复核区块与只读页 `noindex`、签名强制模式与过期拒绝、请求体上限、per-IP 限流、伪造 magic bytes 拒绝、PDF 页数上限、删除 / 清空连带清理复核数据。
 - `test_corrections.py`（9 条）：自定义词典 CRUD 与热生效、非法词条 400、快照往返、人工校正往返（`sentence_index: null` 落库为 -1）、人工新增关系的实体快照回写、非法关系 400、清空全部关系。
+- `test_features_v15.py`（19 条）：解释字段挂到每条关系且不改变三元组、句式模板给出可读骨架、历史记录由同一纯函数重建解释、离线报告含「为什么抽出来」、规则体检的命中热区与未命中触发词、空库不硬凑建议、复核驳回进入体检摘要、三个领域包各自新增触发词且不改 19 类 schema、`merge` 不修改入参、记录保存领域包且报告标注、静态试用数据完整且不引用网络资源。
 
 ---
 
@@ -410,21 +435,23 @@ python eval/run_eval.py --json   # F1 ≥ 0.95
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 健康检查：版本（1.4.0）、19 类关系数、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限 |
-| `POST` | `/api/extract` | 请求体 `{text, title, save}`，返回 `{record_id, result}`；并发超额返回 429 |
-| `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text/.pdf/.docx`（≤2MB）；纯文本自动识别编码，PDF / DOCX 走本地解析库 |
-| `POST` | `/api/extract/batch` | 请求体 `{items: [{text, title}], save}`，最多 20 篇；返回逐篇摘要 + 跨文档聚合，单篇失败不打断 |
+| `GET` | `/api/health` | 健康检查：版本（1.5.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限 |
+| `POST` | `/api/extract` | 请求体 `{text, title, save, profile}`，返回 `{record_id, result}`；`profile` 取 `general / finance / legal`，结果里回显 `profile` / `profile_label`，每条关系带 `explanation`；并发超额返回 429 |
+| `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text/.pdf/.docx`（≤2MB），可选 `profile` 字段；纯文本自动识别编码，PDF / DOCX 走本地解析库 |
+| `POST` | `/api/extract/batch` | 请求体 `{items: [{text, title}], save, profile}`，最多 20 篇；返回逐篇摘要 + 跨文档聚合，单篇失败不打断 |
 | `POST` | `/api/extract/batch/files` | `multipart/form-data` 多文件批量（字段名 `files`），编码逐个识别 |
 | `GET` | `/api/records` | 历史记录分页，参数 `limit / offset / keyword / tag`；≥3 字走 FTS5 trigram 索引，短词回退 LIKE；`tag` 精确匹配整个标签 |
 | `POST` | `/api/records` | 把当前结果另存为快照（三元组会先做类型与长度校验） |
-| `GET` | `/api/records/{id}` | 单条记录详情（含实体与三元组） |
+| `GET` | `/api/records/{id}` | 单条记录详情（含实体与三元组、抽取时使用的 `profile` / `profile_label`，每条关系重建 `explanation`） |
 | `PUT` | `/api/records/{id}/relations` | 用人工校正后的三元组整体替换，来源标记为 `manual`；可选 `entities` 一并回写实体快照、`entity_types` 与 `entity_count`；`sentence_index` 显式传 `null` 落库为 `-1`；**已定稿返回 409** |
 | `PUT` | `/api/records/{id}/entities` | 实体级校正：替换实体数组并写入 `corrections` 留痕；**已定稿返回 409** |
 | `DELETE` | `/api/records/{id}` | 删除单条记录 |
 | `DELETE` | `/api/records` | 清空全部记录 |
 | `GET` | `/api/stats` | 全库统计：记录数、实体数、三元组数、平均耗时、热门关系、活跃实体 |
 | `GET` | `/api/samples` | 内置示例新闻 |
-| `GET` | `/api/schema` | 实体类型与关系类型目录（含颜色，供前端渲染） |
+| `GET` | `/api/schema` | 实体类型与关系类型目录（含颜色，供前端渲染）、`profiles` 领域包目录与 `default_profile` |
+| `GET` | `/api/profiles` | 领域包目录：词条数、触发词数、覆盖的关系 key 与说明 |
+| `GET` | `/api/insights` | 规则体检：历史摘要、命中热区（触发词 / 策略 / 关系）、从未命中的触发词、人工删除最多的关系与主动建议 |
 | `GET` / `POST` / `DELETE` | `/api/dictionary` | 自定义实体词条：列表、新增（含重复检测）、删除单条 / 清空 |
 | `GET` / `POST` / `DELETE` | `/api/rules` | 自定义关系触发词：列表（附 19 类内置触发词）、给某类追加触发词、删除 / 清空 |
 
@@ -448,7 +475,7 @@ python eval/run_eval.py --json   # F1 ≥ 0.95
 | `POST` | `/api/eval` | 跑一次 P/R/F1 评测；`cases` 留空用内置集，`save` 控制是否留历史；返回完整报告 |
 | `GET` | `/api/eval/runs` | 评测历史列表（F1 回归曲线数据） |
 | `GET` | `/api/eval/runs/{id}` | 单次评测的完整报告 |
-| `POST` | `/api/rules/trial` | 规则 A/B 试跑：传文本与候选触发词，返回 `before / after / added / removed / unchanged`；不落库、不改当前配置 |
+| `POST` | `/api/rules/trial` | 规则 A/B 试跑：传 `{text, triggers, profile}`，领域包同时作用于基线与候选，返回 `before / after / added / removed / unchanged`；不落库、不改当前配置 |
 | `GET` / `POST` | `/api/rules/versions` | 配置版本列表 / 把当前触发词与词典存成快照 |
 | `POST` | `/api/rules/versions/{id}/restore` | 回滚到指定版本并立即热更新抽取索引 |
 
@@ -499,14 +526,29 @@ python eval/run_eval.py --json   # F1 ≥ 0.95
       "relation": "acquire", "relation_label": "收购",
       "tail": "搜狗公司", "tail_type": "ORG", "tail_canonical": "搜狗",
       "confidence": 0.77, "evidence": "9月5日，腾讯控股宣布以每股58美元的价格收购搜狗公司…",
-      "trigger": "收购", "rule_base": "trigger", "sentence_index": 0 }
+      "trigger": "收购", "rule_base": "trigger", "sentence_index": 0,
+      "score_parts": { "base": 0.93, "distance_penalty": -0.16, "adjust": 0 },
+      "matched_template": "",
+      "explanation": {
+        "strategy": "触发词锚定", "strategy_key": "trigger",
+        "strategy_how": "以触发词为锚点，向左 / 向右寻找符合类型约束且距离最近的实体",
+        "matched": "收购", "template": null,
+        "type_constraint": "组织机构 → 组织机构",
+        "confidence_parts": { "base": 0.93, "distance_penalty": -0.16, "adjust": 0,
+                              "final": 0.77, "formula": "0.93 − 0.16（实体距离）= 0.77（限定在 0.52–0.98）",
+                              "exact": true },
+        "evidence": "…", "sentence_no": 1, "steps": ["…", "…", "…", "…"]
+      } }
   ],
+  "profile": "general", "profile_label": "通用新闻",
   "entity_type_counts": { "ORG": 10, "PERSON": 3, "TIME": 2, "MONEY": 2, "LOC": 1 },
   "relation_type_counts": { "subsidiary": 1, "acquire": 1, "employ": 2 },
   "stats": { "char_count": 171, "sentence_count": 5, "entity_count": 18,
              "relation_count": 9, "elapsed_ms": 1.9 }
 }
 ```
+
+`score_parts` / `matched_template` 只为解释服务，不参与去重、排序与评测；`explanation` 由 `nlp/explanation.py` 的纯函数生成，历史记录、只读报告与静态试用页共用这一份口径。判定的仍然是 `head / relation / tail` 三元组，因此加这些字段不会改变 P/R/F1。
 
 ---
 
@@ -518,6 +560,7 @@ CREATE TABLE records (
     title          TEXT    NOT NULL,
     text           TEXT    NOT NULL,
     source         TEXT    NOT NULL DEFAULT 'text',   -- text | file
+    profile        TEXT    NOT NULL DEFAULT 'general',-- 抽取时用的领域包，1.5.0 幂等迁移补列
     char_count     INTEGER, sentence_count INTEGER,
     entity_count   INTEGER, relation_count INTEGER,
     entity_types   TEXT,      -- JSON: {类型: 数量}
@@ -542,7 +585,7 @@ CREATE TABLE relations (
 
 `head_canonical / tail_canonical` 存归一后的实体名，使"腾讯控股"与"腾讯"在统计聚合中落到同一条记录——否则全库排行榜会把同一实体拆成多行。旧库在启动时由 `db._migrate()` 自动补列并回填（幂等）。
 
-除上面两张业务表外，还有十张支撑表：
+除上面两张业务表外，还有十一张支撑表：
 
 | 表 | 作用 |
 | --- | --- |
@@ -556,10 +599,11 @@ CREATE TABLE relations (
 | `tasks` | 后台批量任务状态（`status / done / total / result_json / error`），前端轮询进度；重启时把残留的 `running` 标为 `failed`，避免永远转圈 |
 | `review_decisions` | 逐条三元组的人工结论与批注，`(record_id, relation_key)` 唯一；`relation_key` 是三元组内容指纹，改内容后旧结论自动失效 |
 | `review_snapshots` | 定稿时的不可变快照（三元组 / 实体 / 结论 JSON），`final` 之后仍可回放 |
+| `relation_deletions` | 人工校正时被删掉的自动抽取关系留痕（关系、头尾、来源规则、时间），规则体检据此找出「最常被否掉的关系」；删除记录或清空历史时一并清理 |
 
 删除单条记录与清空历史都会连带清理这两张表，不留孤儿行。
 
-1.3.0 的新表、`records.tags`、1.4.0 的 `records.review_status` 与 `review_decisions` / `review_snapshots` 都由 `db._migrate()` 幂等补建，旧库直接启动即可升级，不需要手动执行 SQL；依赖归一化字段的索引（`idx_relations_head` / `idx_relations_confidence` / `idx_relations_record_conf`）在补列之后才创建，支撑全局实体检索、冲突检测与低置信度复核队列。运行时数据文件 `backend/data/app.db` 已移出 git 跟踪（`.gitignore` 覆盖 `*.db`、WAL/SHM 与 `.report-secret`），只存在于本机。
+1.3.0 的新表、`records.tags`、1.4.0 的 `records.review_status` 与 `review_decisions` / `review_snapshots`、1.5.0 的 `records.profile` 与 `relation_deletions` 都由 `db._migrate()` 幂等补建，旧库直接启动即可升级，不需要手动执行 SQL；依赖归一化字段的索引（`idx_relations_head` / `idx_relations_confidence` / `idx_relations_record_conf`）在补列之后才创建，支撑全局实体检索、冲突检测与低置信度复核队列。运行时数据文件 `backend/data/app.db` 已移出 git 跟踪（`.gitignore` 覆盖 `*.db`、WAL/SHM 与 `.report-secret`），只存在于本机。
 
 连接层开启 `journal_mode=WAL`（每个库只设一次）与 `busy_timeout=5000`，连接按线程复用，避免每个请求重开连接、重设 PRAGMA。SQLite 未编入 FTS5 或版本低于 3.34 时，全文检索自动回退 `LIKE`，功能不降级、只是失去索引加速。
 
@@ -626,6 +670,8 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 11. **只读报告链接依赖本机服务**：`/report/{id}` 读的是同一份 SQLite，记录被删或换机器就失效；要真正离线交付请用导出菜单里的单文件 HTML，或导出项目包在另一台机器 `merge` 导入。签名链接的密钥存在 `backend/data/.report-secret`，备份数据目录时须一并备份。
 12. **复核结论绑定内容指纹**：改了三元组的实体、关系或证据句序号后，原结论会自动失效为「待复核」，需重新判定；定稿快照不可变，改稿必须先解锁退回 `in_review`，旧快照仍保留。
 13. **签名分享默认不强制**：未设置 `APP_REPORT_SECRET` 时，`/report/{id}` 仍可裸 id 访问（本机开箱即用）；生产必须显式配置该变量才会拒绝未签名 / 过期链接。
+14. **静态试用页是只读样例**：`/demo` 展示的是导出时算好的 4 篇结果，不能输入自己的文本，也不会随后端规则改动自动重算——改了规则、词典或领域包之后要重新导出 `frontend/src/data/demo-samples.json`。要抽自己的材料请用工作台。
+15. **领域包只叠加词条与触发词**：`finance` / `legal` 不会新增关系类型、不改句式模板与 19 类 schema，因此领域包能补「说法」，补不了新语义；要新增关系类型仍需改 `lexicon.py` 并重新构建。
 
 ---
 
@@ -639,19 +685,24 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。评测算法只有 `app/nlp/evaluation.py` 一份，CLI 与 `/api/eval` 都调用它，不要在界面里另写一套 P/R/F1。
 - 知识库、质量与交付的查询集中在 `store.py`，复核闭环单独在 `review_store.py`；全局实体直接来自 `relations` 的归一字段，新增查询时优先复用这一层，避免出现需要额外同步的实体表。`/report/{id}` 必须在 `main.py` 的 SPA catch-all 之前注册；改安全策略看 `security.py` 与 `backend/.env.example`。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
+- 静态试用数据在 `frontend/src/data/demo-samples.json`，同样是 `pipeline.analyze()` 对 4 篇样例的真实输出（含 `explanation`）。改过规则、词典或领域包后要重新导出，否则 `/demo` 仍展示旧结果——这个页面按设计不发任何请求。领域包定义在 `backend/app/nlp/profiles.py`，新增一套包只需在 `DOMAIN_PROFILES` 里加 `label / description / terms / triggers`，前端选择器与 `/api/profiles` 会自动出现。
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。
 - `npm run build` 会清空 `frontend/dist/`，截图辅助文件之类的临时内容不要留在 `dist/` 里。
 
-### 交付基线（2026-11-15 实测，1.4.0）
+### 交付基线（2026-11-16 实测，1.5.0）
 
 | 项目 | 结论 |
 | --- | --- |
-| 接口回归 | `python -m pytest -q` → **67 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
+| 接口回归 | `python -m pytest -q` → **86 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
 | 静态检查 | `python -m ruff check app tests` → **All checks passed** |
 | CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.95`），frontend 跑 lockfile 校验 + `npm ci && npm run build` |
 | 效果评测 | P 0.960 / R 1.000 / **F1 0.980** / Macro-F1 0.986，与第九节一致、本轮未回退 |
-| 生产构建 | `npm run build` 通过、**无体积警告**。首页入口 **278.84 KB（gzip 106.08 KB）** + 基础 CSS 41.68 KB（gzip 7.96 KB），**完全不请求 Element Plus**；工作台 `element-setup` JS 288.32 KB / CSS 365.00 KB，图谱 chunk 443.34 KB，复核台独立 chunk 7.32 KB（gzip 3.34 KB） |
+| 生产构建 | `npm run build` 通过、**无体积警告**。首页入口 **281.72 KB（gzip 107.17 KB）** + 基础 CSS 42.04 KB（gzip 8.01 KB），**完全不请求 Element Plus**；`/demo` 独立 chunk 33.86 KB（gzip 9.22 KB，含 4 篇样例数据），只在访问该路由时下载；工作台 `element-setup` JS 288.32 KB / CSS 365.00 KB，图谱 chunk 443.34 KB，规则实验室 11.60 KB、三元组表格 16.17 KB |
 | 安全集 | CORS 默认白名单（本机 8000 / Vite 5173）、per-IP 滑动窗口限流（默认 120 次/分）、全局请求体上限 4 MB、上传扩展名 + magic bytes 双检、PDF ≤60 页 + 解析硬超时、DOCX 解压体积上限、结构化 JSON 访问日志 + `X-Request-ID`；只读页 `noindex` / `no-referrer` / `private, no-store`，分享链 HMAC 签名 + 有效期 |
 | 复核闭环 | `draft → in_review → final` 状态机，定稿必须走 `/finalize` 写不可变快照并锁定关系 / 实体写入（409），解锁需显式退回 `in_review`；结论按三元组内容指纹对齐，改了实体自动失效；结论写进单文件 HTML 与只读报告 |
-| 数据层 | WAL + 连接按线程复用；`counters` 增量统计 + 5 秒缓存；FTS5 trigram 中文子串检索（短词回退 LIKE）；`review_status` 与 2 张新表由 `_migrate()` 幂等补建，旧库启动即升级；删除 / 清空记录连带清理复核决策与快照；`backend/data/app.db` 已移出 git 跟踪 |
-| 端到端复核 | 服务在 8000：`/`、`/app`、`/docs`、`/api/health`（**1.4.0**）、`/report/73` 均 200；CDP 真截图 `docs/screenshots/13-review.png`，复核台 9 行三元组与状态按钮、批注正常渲染，**390 / 768 / 1440 三档 `scrollWidth == innerWidth`**、运行时错误 0；签名强制模式与过期拒绝由测试覆盖 |
+| 可解释性 | 每条关系带 `explanation`：策略与判定方式、命中词、模板骨架、类型约束、置信度构成公式与 4 步判定链；实时抽取、历史记录、离线报告、静态试用共用 `nlp/explanation.py` 一份口径，纯展示不改 P/R/F1 |
+| 规则体检 | `/api/insights` 在一次全表扫描里给出命中热区（触发词 / 策略 / 关系）、从未命中的触发词与人工删除最多的关系，并直接生成可执行建议；规则实验室「规则体检」页签展示结论，点未命中词可带进 A/B 候选；空库只给 baseline，不硬凑 |
+| 领域包 | `general / finance / legal`：finance 18 个、legal 11 个领域触发词。同一句「腾讯控股吃下搜狗公司。」在 general 下 0 条、finance 下 1 条；记录保存 `profile`，历史与报告都能说明「用什么抽的」；`general` 为空集，F1 与 1.4.0 一致 |
+| 静态试用站 | `/demo` 4 篇真实样例、**零 `/api` 请求**、不加载 Element Plus；首页导航与首屏次级 CTA 均可进入；`robots.txt` 允许 `/` 与 `/demo`，拒绝 `/app`、`/api`、`/report`；页面标题与 `robots` 随路由切换，404 页 `noindex` |
+| 数据层 | WAL + 连接按线程复用；`counters` 增量统计 + 5 秒缓存；FTS5 trigram 中文子串检索（短词回退 LIKE）；`review_status`、`profile`、`relation_deletions` 与其余支撑表由 `_migrate()` 幂等补建，旧库启动即升级；删除 / 清空记录连带清理复核决策、快照与删除留痕；`backend/data/app.db` 已移出 git 跟踪 |
+| 端到端复核 | 服务在 8000 重启加载 1.5.0 后：接口脚本 **39 项断言全过**（health / schema / profiles、三领域包抽取与 profile 回显、解释字段、`/api/insights`、含领域包的 A/B 试跑、历史解释重建、报告解释区与领域包标注、`/demo` 与 `/robots.txt`）；浏览器 CDP **43 项断言全过**，真截图 `00-landing` / `14-demo` / `15-explain` / `16-rules-insights`，`/demo` 零 `/api` 请求、不加载组件库，**390 / 768 / 1440 三档 `scrollWidth == innerWidth`**，四个页面运行时错误 0 |

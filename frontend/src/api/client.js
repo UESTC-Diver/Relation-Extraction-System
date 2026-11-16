@@ -28,15 +28,23 @@ export const health = () => http.get('/health')
 // options.signal 来自调用方的 AbortController：改了文本又重抽、或清空结果时，
 // 在途请求要能取消，不能让旧响应回来覆盖新结果。
 export const extractText = (text, title = '', save = true, options = {}) =>
-  http.post('/extract', { text, title, save }, { signal: options.signal })
+  http.post(
+    '/extract',
+    { text, title, save, profile: options.profile || 'general' },
+    { signal: options.signal },
+  )
 
 export const extractFile = (file, save = true, options = {}) => {
   const form = new FormData()
   form.append('file', file)
-  return http.post(`/extract/file?save=${save}`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    signal: options.signal,
-  })
+  return http.post(
+    `/extract/file?save=${save}&profile=${encodeURIComponent(options.profile || 'general')}`,
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      signal: options.signal,
+    },
+  )
 }
 
 export const getSamples = () => http.get('/samples')
@@ -61,12 +69,19 @@ export const clearRecords = () => http.delete('/records')
 
 // 批量抽取：一次提交多篇，服务端逐篇分析并返回跨文档聚合
 export const batchExtract = (items, save = true, options = {}) =>
-  http.post('/extract/batch', { items, save }, { signal: options.signal })
+  http.post(
+    '/extract/batch',
+    { items, save, profile: options.profile || 'general' },
+    { signal: options.signal },
+  )
 
 export const batchExtractFiles = (files, save = true, options = {}) => {
   const form = new FormData()
   for (const file of files) form.append('files', file)
-  return http.post(`/extract/batch/files?save=${save}`, form, {
+  return http.post(
+    `/extract/batch/files?save=${save}&profile=${encodeURIComponent(options.profile || 'general')}`,
+    form,
+    {
     headers: { 'Content-Type': 'multipart/form-data' },
     signal: options.signal,
     onUploadProgress: options.onProgress,
@@ -108,6 +123,8 @@ export const runEval = (payload = {}) => http.post('/eval', payload)
 export const getEvalRuns = () => http.get('/eval/runs')
 export const getEvalRun = (id) => http.get(`/eval/runs/${id}`)
 export const trialRules = (payload) => http.post('/rules/trial', payload)
+export const getInsights = () => http.get('/insights')
+export const getProfiles = () => http.get('/profiles')
 export const getRuleVersions = () => http.get('/rules/versions')
 export const saveRuleVersion = (name) => http.post('/rules/versions', { name })
 export const restoreRuleVersion = (id) => http.post(`/rules/versions/${id}/restore`)
@@ -119,8 +136,8 @@ export const buildReport = (payload) => http.post('/report', payload)
 export const exportProject = () => http.get('/project/export')
 export const importProject = (payload, mode = 'merge') =>
   http.post('/project/import', { payload, mode })
-export const submitBatchTask = (items, save = true) =>
-  http.post('/tasks/batch', { items, save })
+export const submitBatchTask = (items, save = true, profile = 'general') =>
+  http.post('/tasks/batch', { items, save, profile })
 export const getTask = (id) => http.get(`/tasks/${id}`)
 export const getTasks = () => http.get('/tasks')
 

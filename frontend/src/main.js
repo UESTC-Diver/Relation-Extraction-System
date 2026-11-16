@@ -6,10 +6,10 @@ import './styles.css'
 const app = createApp(App)
 
 /**
- * 站点分流：/ 是纯静态落地页，一个 Element Plus 组件都不用；
- * /app 才是工作台。把整套组件注册放进动态 chunk，首页就不必为一个
- * 用不到的 UI 库付 600 KB 的下载成本。两个入口之间是整页跳转（<a href>），
- * 所以每次加载都能按 pathname 正确判断。
+ * 站点分流：/ 落地页、/demo 静态试用沙箱都不用 Element Plus，
+ * 只有 /app 工作台需要。把整套组件注册放进动态 chunk，首页与试用页
+ * 就不必为一个用不到的 UI 库付 600 KB 的下载成本。入口之间是整页
+ * 跳转（<a href>），所以每次加载都能按 pathname 正确判断。
  */
 function needsElementPlus() {
   const p = location.pathname.replace(/\/+$/, '') || '/'

@@ -53,6 +53,7 @@ class TaskItem(BaseModel):
 class TaskBatchRequest(BaseModel):
     items: list[TaskItem] = Field(default_factory=list)
     save: bool = True
+    profile: str = "general"
 
 
 def _safe_filename(value: str) -> str:
@@ -67,6 +68,8 @@ def _result_from_record(record_id: int) -> dict | None:
     return {
         "title": rec["title"],
         "text": rec["text"],
+        "profile": rec.get("profile") or "general",
+        "profile_label": rec.get("profile_label") or "",
         "entities": rec["entities"],
         "relations": rec["relations"],
         "stats": {
@@ -168,7 +171,9 @@ def project_import(payload: ProjectImportRequest) -> dict:
 # 后台批量任务
 # --------------------------------------------------------------------------- #
 
-def _execute_batch_task(task_id: str, items: list[TaskItem], save: bool) -> None:
+def _execute_batch_task(
+    task_id: str, items: list[TaskItem], save: bool, profile: str = "general"
+) -> None:
     summaries: list[dict] = []
     record_ids: list[int] = []
     full_results: list[dict] = []
@@ -177,7 +182,7 @@ def _execute_batch_task(task_id: str, items: list[TaskItem], save: bool) -> None
             label = item.title or (item.text.strip()[:20] + "…")
             try:
                 with extract._extract_slot():
-                    res = extract._run(item.text, item.title, save, "text")
+                    res = extract._run(item.text, item.title, save, "text", profile=profile)
             except HTTPException as err:
                 summaries.append({
                     "index": index, "title": label, "record_id": None,
@@ -222,7 +227,7 @@ def submit_batch(payload: TaskBatchRequest) -> dict:
     if len(payload.items) > MAX_TASK_ITEMS:
         raise HTTPException(status_code=413, detail=f"后台任务最多 {MAX_TASK_ITEMS} 篇")
     task_id = store.create_task("batch", len(payload.items))
-    _pool.submit(_execute_batch_task, task_id, payload.items, payload.save)
+    _pool.submit(_execute_batch_task, task_id, payload.items, payload.save, payload.profile)
     return {"task_id": task_id, "total": len(payload.items), "status": "running"}
 
 

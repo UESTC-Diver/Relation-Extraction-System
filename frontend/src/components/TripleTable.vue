@@ -65,6 +65,7 @@
         <span v-if="locked" class="locked-flag">已定稿 · 锁定</span>
         <span v-if="dirty" class="dirty-flag">未保存</span>
         <span class="count"><b>{{ filtered.length }}</b> / {{ relations.length }} 条</span>
+        <span class="why-hint">点行首 › 看「为什么抽出来」</span>
         <el-button
           :icon="RefreshLeft"
           :disabled="locked || !canUndo"
@@ -130,6 +131,54 @@
                   <b>{{ (row.confidence * 100).toFixed(0) }}%</b>
                 </span>
               </div>
+
+              <!-- 解释字段由后端统一生成：实时抽取、历史记录、离线报告口径一致。
+                   旧快照 / 人工录入没有命中路径，就明说没有，不编造。 -->
+              <div v-if="row.explanation" class="why">
+                <div class="why-head">
+                  <span class="why-title">为什么抽出来</span>
+                  <span class="why-strategy">{{ row.explanation.strategy }}</span>
+                  <span
+                    v-if="!row.explanation.confidence_parts?.exact"
+                    class="why-est"
+                    title="历史快照没有保存逐步分值，这里给出的是定性说明"
+                  >分值来自估算</span>
+                </div>
+                <p class="why-how">{{ row.explanation.strategy_how }}</p>
+                <dl class="why-grid">
+                  <div>
+                    <dt>命中词</dt>
+                    <dd>{{ row.explanation.matched }}</dd>
+                  </div>
+                  <div v-if="row.explanation.template">
+                    <dt>模板骨架</dt>
+                    <dd><code>{{ row.explanation.template }}</code></dd>
+                  </div>
+                  <div>
+                    <dt>类型约束</dt>
+                    <dd>{{ row.explanation.type_constraint }}</dd>
+                  </div>
+                  <div>
+                    <dt>证据句</dt>
+                    <dd>第 {{ row.explanation.sentence_no ?? (row.sentence_index ?? 0) + 1 }} 句</dd>
+                  </div>
+                </dl>
+                <p v-if="row.explanation.rule_description" class="why-rule">
+                  {{ row.explanation.rule_description }}
+                </p>
+                <p class="why-score">
+                  <span>置信度构成</span>
+                  <code>{{ row.explanation.confidence_parts?.formula || '—' }}</code>
+                </p>
+                <ol v-if="row.explanation.steps?.length" class="why-steps">
+                  <li v-for="(step, i) in row.explanation.steps" :key="i">{{ step }}</li>
+                </ol>
+              </div>
+              <p v-else class="why-fallback">
+                {{ row.rule_base === 'manual'
+                  ? '人工录入或改写，不经过规则引擎，因此没有自动命中路径。'
+                  : '这条来自旧快照，未保存命中路径；重新抽取一次即可生成解释。' }}
+              </p>
             </div>
           </template>
         </el-table-column>
@@ -969,6 +1018,141 @@ function exportCsv() {
   font-weight: 500;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
+}
+
+.why-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ---------- 为什么抽出来 ----------
+   解释是校对稿的「批注层」：只用色阶与朱红小标分层，不加第二套卡片描边。 */
+.why {
+  margin-top: 12px;
+  padding: 10px 12px 11px;
+  border-left: 2px solid var(--brand-red);
+  background: var(--surface);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.why-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.why-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.2px;
+}
+
+.why-strategy {
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  font-size: 10.5px;
+  color: var(--brand-red);
+  background: var(--brand-red-soft);
+}
+
+.why-est {
+  font-size: 10.5px;
+  color: var(--warn);
+}
+
+.why-how {
+  margin: 7px 0 0;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 16px;
+  margin: 10px 0 0;
+}
+
+.why-grid > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.why-grid dt {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.why-grid dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.why-grid code,
+.why-score code {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface-3);
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+}
+
+.why-rule {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.why-score {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 9px 0 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.why-score code {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.why-steps {
+  margin: 9px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.why-fallback {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (max-width: 1080px) {
+  .why-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .evidence-block {
+    padding-left: 16px;
+  }
 }
 
 /* ---------- 新增 / 编辑弹窗 ---------- */

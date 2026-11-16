@@ -25,7 +25,7 @@ def decide(client, rid, key, decision="approved", note="证据句吻合"):
 
 
 def test_health_version_and_cors_default(client):
-    assert client.get("/api/health").json()["version"] == "1.4.0"
+    assert client.get("/api/health").json()["version"] == "1.5.0"
     # 默认白名单不含 *，陌生来源拿不到 CORS 放行头
     res = client.options(
         "/api/extract",

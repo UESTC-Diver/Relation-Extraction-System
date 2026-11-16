@@ -1,12 +1,15 @@
 <template>
   <LandingPage v-if="page === 'landing'" />
 
+  <DemoSandbox v-else-if="page === 'demo'" />
+
   <div v-else-if="page === 'missing'" class="missing" role="main">
     <p class="missing-code">404</p>
     <h1 class="missing-title">这一页不存在</h1>
-    <p class="missing-note">地址没有对应的页面。首页介绍这套系统，工作台用来实际抽取。</p>
+    <p class="missing-note">地址没有对应的页面。首页介绍这套系统，静态试用展示真实样例，工作台用来实际抽取。</p>
     <div class="missing-links">
       <a href="/">返回首页</a>
+      <a href="/demo">看静态样例</a>
       <a href="/app">进入工作台</a>
     </div>
   </div>
@@ -131,6 +134,8 @@
           v-model:title-value="title"
           :samples="samples"
           :schema="schema"
+          :profiles="schema.profiles || []"
+          v-model:profile-value="profile"
           :loading="loading"
           @run="runExtract"
           @file="onFile"
@@ -450,9 +455,12 @@ const EvalDialog = defineAsyncComponent(() => import('./components/EvalDialog.vu
 const RulesLabDialog = defineAsyncComponent(() => import('./components/RulesLabDialog.vue'))
 const EntityFixDialog = defineAsyncComponent(() => import('./components/EntityFixDialog.vue'))
 const ReviewDialog = defineAsyncComponent(() => import('./components/ReviewDialog.vue'))
+// /demo 是零后端静态沙箱：只在访问该路由时才下载组件与 4 篇真实样例数据，
+// 首页与工作台都不为它付体积成本。
+const DemoSandbox = defineAsyncComponent(() => import('./components/DemoSandbox.vue'))
 
 /**
- * 站点只有三个入口：/ 是落地页，/app 是工作台，其余路径是品牌 404。
+ * 站点有四个入口：/ 落地页、/demo 静态试用、/app 工作台，其余是品牌 404。
  * 后端 SPA catch-all 会把任意路径回落到 index.html，所以直接用 pathname 判断即可。
  * 兼容旧链接：/#entities 这类锚点仍然直达工作台对应页签。
  */
@@ -461,16 +469,56 @@ function resolvePage() {
   if (p === '/' || p === '/index.html') {
     return /^#(entities|triples|graph|stats)$/.test(location.hash) ? 'app' : 'landing'
   }
+  if (p === '/demo' || p.startsWith('/demo/')) return 'demo'
   if (p === '/app' || p.startsWith('/app/')) return 'app'
   return 'missing'
 }
 const page = ref(resolvePage())
-function onPopstate() { page.value = resolvePage() }
+
+/* SPA 共用一个 index.html，标题与 robots 必须跟着路由走：工作台和 404
+   不该被搜索引擎当内容页收录，静态试用页则应当可以索引。 */
+const PAGE_META = {
+  landing: {
+    title: '中文关系抽取系统 · 把每一条关系追溯到原文',
+    description: '基于词典与规则模板的中文实体识别与关系抽取系统。6 类实体、19 类关系，每条三元组都附带证据句、触发词与置信度。本地离线运行，效果可用金标准集复现。',
+    robots: 'index, follow',
+  },
+  demo: {
+    title: '静态试用 · 中文关系抽取系统',
+    description: '不联网、不连后端，用四篇由本机抽取引擎真实运行导出的样例，预演实体、三元组、命中路径与导出结果。',
+    robots: 'index, follow',
+  },
+  app: {
+    title: '工作台 · 中文关系抽取系统',
+    description: '输入中文文本，识别实体并抽取关系三元组，逐条查看证据句与命中路径。',
+    robots: 'noindex, nofollow',
+  },
+  missing: {
+    title: '页面不存在 · 中文关系抽取系统',
+    description: '该地址没有对应的页面。',
+    robots: 'noindex, nofollow',
+  },
+}
+
+function applyPageMeta() {
+  const meta = PAGE_META[page.value] || PAGE_META.missing
+  document.title = meta.title
+  for (const [attr, value] of [['description', meta.description], ['robots', meta.robots]]) {
+    const el = document.querySelector(`meta[name="${attr}"]`)
+    if (el) el.setAttribute('content', value)
+  }
+}
+
+function onPopstate() {
+  page.value = resolvePage()
+  applyPageMeta()
+}
 
 const SPLIT_KEY = 're.splitPref'
 
 const text = ref('')
 const title = ref('')
+const profile = ref('general')
 const result = ref(null)
 const loading = ref(false)
 const tab = ref('entities')
@@ -824,7 +872,10 @@ async function runExtract({ save = true } = {}) {
   loadError.value = ''
   liveMessage.value = '正在抽取，请稍候'
   try {
-    const res = await api.extractText(text.value, title.value, save, { signal: controller.signal })
+    const res = await api.extractText(text.value, title.value, save, {
+      signal: controller.signal,
+      profile: profile.value,
+    })
     if (seq !== extractSeq) return
     applyResult(res.result, res.record_id)
     liveMessage.value = `抽取完成：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系`
@@ -992,7 +1043,10 @@ async function onFile(file) {
   loading.value = true
   loadError.value = ''
   try {
-    const res = await api.extractFile(file, true, { signal: controller.signal })
+    const res = await api.extractFile(file, true, {
+      signal: controller.signal,
+      profile: profile.value,
+    })
     if (seq !== extractSeq) return
     text.value = res.result.text
     title.value = file.name.replace(/\.[^.]+$/, '')
@@ -1105,8 +1159,9 @@ function onNarrowChange(event) {
 }
 
 onMounted(async () => {
+  applyPageMeta()
   window.addEventListener('popstate', onPopstate)
-  // 首页与 404 不触碰业务接口：后端没启动时也不该在落地页弹错误
+  // 首页、静态试用与 404 不触碰业务接口：后端没启动时也不该在这些页面弹错误
   if (page.value !== 'app') return
   const hashTab = tabFromHash()
   if (hashTab) tab.value = hashTab
