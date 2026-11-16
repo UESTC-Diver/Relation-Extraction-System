@@ -3,6 +3,8 @@
 
   <DemoSandbox v-else-if="page === 'demo'" />
 
+  <DossierPage v-else-if="page === 'cases'" />
+
   <div v-else-if="page === 'missing'" class="missing" role="main">
     <p class="missing-code">404</p>
     <h1 class="missing-title">这一页不存在</h1>
@@ -76,6 +78,10 @@
           </button>
           <template #dropdown>
             <el-dropdown-menu>
+              <el-dropdown-item command="cases">
+                <span class="exp-label">尽调案卷</span>
+                <span class="exp-hint">多份材料归档成一个标的的关联方核查档案</span>
+              </el-dropdown-item>
               <el-dropdown-item command="annotate">
                 <span class="exp-label">金标准标注</span>
                 <span class="exp-hint">判该抽 / 不该抽、补漏抽，算出自己材料上的 F1</span>
@@ -469,9 +475,11 @@ const ReviewDialog = defineAsyncComponent(() => import('./components/ReviewDialo
 // /demo 是零后端静态沙箱：只在访问该路由时才下载组件与 4 篇真实样例数据，
 // 首页与工作台都不为它付体积成本。
 const DemoSandbox = defineAsyncComponent(() => import('./components/DemoSandbox.vue'))
+// 案卷页同样是独立整页：材料多、推断链长，塞进工作台的弹窗会把两者都挤变形。
+const DossierPage = defineAsyncComponent(() => import('./components/DossierPage.vue'))
 
 /**
- * 站点有四个入口：/ 落地页、/demo 静态试用、/app 工作台，其余是品牌 404。
+ * 站点有五个入口：/ 落地页、/demo 静态试用、/app 工作台、/cases 尽调案卷，其余是品牌 404。
  * 后端 SPA catch-all 会把任意路径回落到 index.html，所以直接用 pathname 判断即可。
  * 兼容旧链接：/#entities 这类锚点仍然直达工作台对应页签。
  */
@@ -481,6 +489,7 @@ function resolvePage() {
     return /^#(entities|triples|graph|stats)$/.test(location.hash) ? 'app' : 'landing'
   }
   if (p === '/demo' || p.startsWith('/demo/')) return 'demo'
+  if (p === '/cases' || p.startsWith('/cases/')) return 'cases'
   if (p === '/app' || p.startsWith('/app/')) return 'app'
   return 'missing'
 }
@@ -498,6 +507,11 @@ const PAGE_META = {
     title: '静态试用 · 中文关系抽取系统',
     description: '不联网、不连后端，用四篇由本机抽取引擎真实运行导出的样例，预演实体、三元组、命中路径与导出结果。',
     robots: 'index, follow',
+  },
+  cases: {
+    title: '尽调案卷 · 中文关系抽取系统',
+    description: '把一个标的的多份材料收进一个案卷，按直接结论、推断关联与待补强疑点三层摆开，每条都能回到原句。',
+    robots: 'noindex, nofollow',
   },
   app: {
     title: '工作台 · 中文关系抽取系统',
@@ -992,6 +1006,12 @@ async function refreshReview() {
 watch(activeRecordId, refreshReview, { immediate: true })
 
 async function onMoreCommand(command) {
+  if (command === 'cases') {
+    // 案卷是独立整页：整页跳转让它的路由、样式与返回路径都自洽，
+    // 也避免把只读报告链接与案卷状态混在同一个弹窗里。
+    location.href = '/cases'
+    return
+  }
   if (command === 'annotate') annotationOpen.value = true
   if (command === 'eval') evalOpen.value = true
   if (command === 'rules') rulesOpen.value = true

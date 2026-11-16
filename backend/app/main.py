@@ -27,6 +27,7 @@ from .nlp.tokenizer import warmup
 from .routers import (
     annotation,
     delivery,
+    dossier as dossier_router,
     dictionary,
     extract,
     knowledge,
@@ -37,7 +38,7 @@ from .routers import (
 )
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-VERSION = "1.6.0"
+VERSION = "2.1.0"
 
 
 @asynccontextmanager
@@ -150,6 +151,7 @@ app.include_router(knowledge.router)
 app.include_router(quality.router)
 app.include_router(review.router)
 app.include_router(annotation.router)
+app.include_router(dossier_router.router)
 # delivery 里含 /report/{id} 独立只读页，必须注册在 SPA catch-all 之前
 app.include_router(delivery.router)
 

@@ -160,6 +160,7 @@ def samples() -> list[dict]:
 
 @router.get("/schema", summary="实体类型、关系类型与领域包目录")
 def schema() -> dict:
+    from ..dossier import MATERIAL_ROLES
     from ..nlp.profiles import DEFAULT_PROFILE, catalog
 
     return {
@@ -168,4 +169,5 @@ def schema() -> dict:
         "relation_count": len(RELATION_RULES),
         "profiles": catalog(),
         "default_profile": DEFAULT_PROFILE,
+        "material_roles": MATERIAL_ROLES,
     }

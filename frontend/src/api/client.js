@@ -170,4 +170,17 @@ export const getReviewSnapshots = (id) => http.get(`/records/${id}/review/snapsh
 export const createShareLink = (recordId, ttlSeconds = 7 * 24 * 3600) =>
   http.post('/report/share', { record_id: recordId, ttl_seconds: ttlSeconds })
 
+/* ---------- 案卷：材料归档、直接结论、推断关联与疑点 ---------- */
+export const getDossiers = () => http.get('/dossiers')
+export const createDossier = (payload) => http.post('/dossiers', payload)
+export const seedDossier = () => http.post('/dossiers/seed')
+export const getDossier = (id) => http.get(`/dossiers/${id}`)
+export const updateDossier = (id, payload) => http.put(`/dossiers/${id}`, payload)
+export const deleteDossier = (id) => http.delete(`/dossiers/${id}`)
+export const addDossierMaterials = (id, recordIds, role = '其他材料') =>
+  http.post(`/dossiers/${id}/records`, { record_ids: recordIds, role })
+export const removeDossierMaterial = (id, recordId) =>
+  http.delete(`/dossiers/${id}/records/${recordId}`)
+export const dossierReportUrl = (id) => `/api/dossiers/${id}/report`
+
 export default http

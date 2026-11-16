@@ -215,6 +215,30 @@ CREATE TABLE IF NOT EXISTS annotations (
 );
 CREATE INDEX IF NOT EXISTS idx_annotations_record ON annotations (record_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_verdict ON annotations (verdict);
+
+-- 案卷：一份尽调档案 = 一个标的 + 一批材料。
+-- 案卷只做「材料归档与视图聚合」，不复制材料内容：同一份记录被多个案卷
+-- 引用时，抽取结果、校正、复核结论始终只有一份。
+CREATE TABLE IF NOT EXISTS dossiers (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    subject      TEXT    NOT NULL DEFAULT '',
+    subject_type TEXT    NOT NULL DEFAULT 'ORG',
+    note         TEXT    NOT NULL DEFAULT '',
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+
+-- role 是材料在案卷里的身份（工商登记 / 股权转让 / 裁判文书 / 新闻稿 …），
+-- 它不改变抽取结果，只决定案卷视图里的分组、报告小标题与证据权重提示。
+CREATE TABLE IF NOT EXISTS dossier_records (
+    dossier_id INTEGER NOT NULL,
+    record_id  INTEGER NOT NULL,
+    role       TEXT    NOT NULL DEFAULT '其他材料',
+    added_at   TEXT    NOT NULL,
+    PRIMARY KEY (dossier_id, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dossier_records_record ON dossier_records (record_id);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
@@ -755,6 +779,8 @@ def delete_record(record_id: int) -> bool:
         conn.execute("DELETE FROM relation_deletions WHERE record_id = ?", (record_id,))
         conn.execute("DELETE FROM annotations WHERE record_id = ?", (record_id,))
         conn.execute("DELETE FROM annotation_set_records WHERE record_id = ?", (record_id,))
+        # 材料被删，案卷本身保留：只把这份材料从案卷的归档清单里摘掉
+        conn.execute("DELETE FROM dossier_records WHERE record_id = ?", (record_id,))
         cur = conn.execute("DELETE FROM records WHERE id = ?", (record_id,))
         if cur.rowcount > 0 and totals:
             _bump_counters(
@@ -776,6 +802,9 @@ def clear_records() -> int:
         conn.execute("DELETE FROM relation_deletions")
         conn.execute("DELETE FROM annotations")
         conn.execute("DELETE FROM annotation_set_records")
+        # 清空历史 = 所有材料都没了，案卷壳留着没意义，一并清掉
+        conn.execute("DELETE FROM dossier_records")
+        conn.execute("DELETE FROM dossiers")
         cur = conn.execute("DELETE FROM records")
         conn.execute(
             """UPDATE counters SET records = 0, chars = 0, entities = 0,
