@@ -228,7 +228,7 @@ onMounted(async () => {
     examples.value = exs || []
     // 有联网能力时默认打开；离线保持关闭，避免用户误以为已核实
     useExternal.value = caps.enabled
-  } catch (err) {
+  } catch {
     // 能力探测失败不影响离线甄别：按离线处理
     error.value = ''
   }

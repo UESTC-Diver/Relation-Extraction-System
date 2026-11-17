@@ -124,7 +124,7 @@
                 </span>
                 <span class="meta-item">
                   <em>所在句</em>
-                  <b>第 {{ (row.sentence_index ?? 0) + 1 }} 句</b>
+                  <b>{{ hasSentenceIndex(row) ? `第 ${row.sentence_index + 1} 句` : '未指定' }}</b>
                 </span>
                 <span class="meta-item">
                   <em>置信度</em>
@@ -160,7 +160,11 @@
                   </div>
                   <div>
                     <dt>证据句</dt>
-                    <dd>第 {{ row.explanation.sentence_no ?? (row.sentence_index ?? 0) + 1 }} 句</dd>
+                    <dd>
+                      第
+                      {{ row.explanation.sentence_no ?? (hasSentenceIndex(row) ? row.sentence_index + 1 : '未指定') }}
+                      句
+                    </dd>
                   </div>
                 </dl>
                 <p v-if="row.explanation.rule_description" class="why-rule">
@@ -237,8 +241,9 @@
               <button
                 class="locate-btn"
                 type="button"
-                :aria-label="`定位第 ${(row.sentence_index ?? 0) + 1} 句证据句`"
-                :title="`第 ${(row.sentence_index ?? 0) + 1} 句 · 跳到原文`"
+                :disabled="!hasSentenceIndex(row)"
+                :aria-label="hasSentenceIndex(row) ? `定位第 ${row.sentence_index + 1} 句证据句` : '未指定证据句'"
+                :title="hasSentenceIndex(row) ? `第 ${row.sentence_index + 1} 句 · 跳到原文` : '未指定证据句'"
                 @click="emit('locate', row.sentence_index)"
               >
                 原文
@@ -336,6 +341,7 @@ import {
   RefreshRight,
   Search,
 } from '@element-plus/icons-vue'
+import { hasSentenceIndex, normalizeSentenceIndex } from '../utils/entities'
 
 const props = defineProps({
   relations: { type: Array, default: () => [] },
@@ -491,7 +497,7 @@ function openEdit(row) {
     relation: row.relation,
     tail: row.tail,
     tail_type: row.tail_type,
-    sentence_index: row.sentence_index ?? null,
+    sentence_index: hasSentenceIndex(row) ? row.sentence_index : null,
     evidence: row.evidence || '',
   }
   dialogOpen.value = true
@@ -518,8 +524,7 @@ function confirm() {
     original && original.tail === tail && original.tail_type === form.value.tail_type
       ? original.tail_canonical || tail
       : canonicalize(tail, form.value.tail_type)
-  const sentenceIndex =
-    typeof form.value.sentence_index === 'number' ? form.value.sentence_index : 0
+  const sentenceIndex = normalizeSentenceIndex(form.value.sentence_index)
 
   const row = {
     id: original?.id || `manual-${Date.now()}`,
@@ -625,7 +630,7 @@ function exportCsv() {
     ElMessage.warning('当前没有可导出的三元组')
     return
   }
-  const header = ['头实体', '头实体类型', '关系', '尾实体', '尾实体类型', '置信度', '触发词', '证据句']
+  const header = ['头实体', '头实体类型', '关系', '尾实体', '尾实体类型', '置信度', '触发词', '证据句', '来源']
   const lines = filtered.value.map((r) => [
     r.head,
     typeLabel(r.head_type),
@@ -635,6 +640,7 @@ function exportCsv() {
     r.confidence.toFixed(2),
     r.trigger || '',
     r.evidence || '',
+    ruleLabel(r.rule_base),
   ])
   const esc = (v) => `"${String(v).replace(/"/g, '""')}"`
   const csv = [header, ...lines].map((row) => row.map(esc).join(',')).join('\r\n')
