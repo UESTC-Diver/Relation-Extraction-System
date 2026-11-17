@@ -40,6 +40,10 @@
           <b>{{ stats.relations ?? 0 }}</b>
           <span>条三元组</span>
         </div>
+        <button class="btn-quiet" type="button" @click="batchOpen = true">
+          <el-icon :size="13"><Files /></el-icon>
+          批量抽取
+        </button>
         <button class="btn-quiet" type="button" @click="historyOpen = true">
           <el-icon :size="13"><Clock /></el-icon>
           历史记录
@@ -135,6 +139,17 @@
               </button>
             </div>
 
+            <button
+              v-if="result"
+              class="btn-icon"
+              type="button"
+              title="复制可复现当前结果的链接"
+              aria-label="复制分享链接"
+              @click="copyShareLink"
+            >
+              <el-icon :size="14"><Link /></el-icon>
+            </button>
+
             <el-dropdown
               v-if="result"
               trigger="click"
@@ -158,6 +173,14 @@
                   <el-dropdown-item command="md" divided>
                     <span class="exp-label">分析报告 Markdown</span>
                     <span class="exp-hint">含统计、实体表、三元组表</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="graphml" divided>
+                    <span class="exp-label">关系图谱 GraphML</span>
+                    <span class="exp-hint">Gephi / yEd / NetworkX 可直接打开</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item command="cypher">
+                    <span class="exp-label">Neo4j Cypher</span>
+                    <span class="exp-hint">MERGE 语句，粘进 Neo4j Browser 即可导入</span>
                   </el-dropdown-item>
                   <el-dropdown-item command="png" divided :disabled="tab !== 'graph'">
                     <span class="exp-label">关系图谱 PNG</span>
@@ -188,7 +211,26 @@
           </button>
         </div>
 
-        <div v-if="result" :key="resultVersion" class="result-body" role="tabpanel" :aria-labelledby="'tab-' + tab">
+        <div v-if="loading && !result" class="result-skeleton" role="status" aria-label="正在抽取">
+          <div class="sk-line sk-title"></div>
+          <div class="sk-line"></div>
+          <div class="sk-line sk-short"></div>
+          <div class="sk-grid">
+            <div class="sk-card"></div>
+            <div class="sk-card"></div>
+            <div class="sk-card"></div>
+          </div>
+          <p class="sk-hint">正在分句、识别实体并匹配关系…</p>
+        </div>
+
+        <div
+          v-if="result"
+          :key="resultVersion"
+          class="result-body"
+          :class="{ 'is-stale': loading }"
+          role="tabpanel"
+          :aria-labelledby="'tab-' + tab"
+        >
           <EntityAnnotator
             v-if="tab === 'entities'"
             :result="result"
@@ -197,17 +239,22 @@
           />
           <TripleTable
             v-else-if="tab === 'triples'"
-            :relations="result.relations || []"
+            :relations="editableRelations"
             :schema="schema"
             :entity-filter="entityFilter"
             :sentences="result.sentences || []"
             :record-id="activeRecordId"
             :dirty="relationsDirty"
             :saving="savingRelations"
+            :can-undo="canUndo"
+            :can-redo="canRedo"
             @update:relations="onRelationsChange"
             @save="saveCorrections"
             @locate="onLocate"
             @clear-filter="entityFilter = null"
+            @snapshot="saveAsSnapshot"
+            @undo="undo"
+            @redo="redo"
           />
           <RelationGraph
             v-else-if="tab === 'graph'"
@@ -274,30 +321,46 @@
     </footer>
 
     <HistoryDrawer v-model="historyOpen" @load="onLoadRecord" />
+    <BatchDialog v-model="batchOpen" @load="onBatchLoad" @finished="refreshStats" />
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   ArrowRight,
   Clock,
   Download,
   EditPen,
+  Files,
   InfoFilled,
+  Link,
   WarningFilled,
 } from '@element-plus/icons-vue'
 import * as api from './api/client'
-import { download, buildCsv, buildJson, buildMarkdown, safeFilename } from './utils/export'
+import {
+  download,
+  buildCsv,
+  buildJson,
+  buildMarkdown,
+  buildGraphml,
+  buildCypher,
+  safeFilename,
+} from './utils/export'
 import { syncEntities as buildSyncedEntities } from './utils/entities'
-import TextWorkbench from './components/TextWorkbench.vue'
-import EntityAnnotator from './components/EntityAnnotator.vue'
-import TripleTable from './components/TripleTable.vue'
-import RelationGraph from './components/RelationGraph.vue'
-import StatsOverview from './components/StatsOverview.vue'
-import HistoryDrawer from './components/HistoryDrawer.vue'
 import LandingPage from './components/LandingPage.vue'
+
+// 首页是默认入口，保持同步渲染，避免首屏闪烁。工作台组件拆成异步 chunk：
+// 访问 / 不下载表格、统计与 ECharts；打开 /app 或切到对应页签时才加载，
+// 已解析过的组件定义由 Vue 缓存，不会重复请求。
+const TextWorkbench = defineAsyncComponent(() => import('./components/TextWorkbench.vue'))
+const EntityAnnotator = defineAsyncComponent(() => import('./components/EntityAnnotator.vue'))
+const TripleTable = defineAsyncComponent(() => import('./components/TripleTable.vue'))
+const RelationGraph = defineAsyncComponent(() => import('./components/RelationGraph.vue'))
+const StatsOverview = defineAsyncComponent(() => import('./components/StatsOverview.vue'))
+const HistoryDrawer = defineAsyncComponent(() => import('./components/HistoryDrawer.vue'))
+const BatchDialog = defineAsyncComponent(() => import('./components/BatchDialog.vue'))
 
 /**
  * 站点只有三个入口：/ 是落地页，/app 是工作台，其余路径是品牌 404。
@@ -330,6 +393,27 @@ const activeRecordId = ref(null)
 const graphRef = ref(null)
 const relationsDirty = ref(false)
 const savingRelations = ref(false)
+
+/* 抽取请求序号与取消控制器：新请求 / 清空会让旧响应失效 */
+let extractSeq = 0
+let extractController = null
+
+function cancelPendingExtract() {
+  extractSeq += 1
+  if (extractController) {
+    extractController.abort()
+    extractController = null
+  }
+}
+
+/* 校正撤销 / 重做 */
+const relationsHistory = ref([])
+const historyIndex = ref(-1)
+const canUndo = computed(() => historyIndex.value > 0)
+const canRedo = computed(
+  () => historyIndex.value >= 0 && historyIndex.value < relationsHistory.value.length - 1,
+)
+const editableRelations = computed(() => result.value?.relations || [])
 
 /* ---------- 动效编排 ----------
    抽取完成是一次性、有因果的事件：结果容器入场与朱红扫光同时启动，
@@ -386,10 +470,13 @@ function tabFromHash() {
 }
 
 watch(tab, (value) => {
-  if (location.hash.replace(/^#/, '') !== value) {
-    history.replaceState(null, '', `#${value}`)
-  }
+  const url = new URL(location.href)
+  // 只改 hash 的写法会把 ?record= / ?q= 一起抹掉，必须拼回完整 URL
+  if (url.hash.replace(/^#/, '') !== value) url.hash = value
+  history.replaceState(null, '', url.pathname + url.search + url.hash)
 })
+
+watch(entityFilter, () => syncShareUrl())
 
 /* ---------- 视图切换（WAI-ARIA tabs：方向键 + Home/End） ---------- */
 function selectTab(name) {
@@ -471,6 +558,36 @@ function syncEntitySnapshot(relations) {
   }
 }
 
+function cloneRelations(relations) {
+  return (relations || []).map((r) => ({ ...r }))
+}
+
+function resetRelationHistory(relations) {
+  relationsHistory.value = [cloneRelations(relations)]
+  historyIndex.value = 0
+}
+
+function pushRelationHistory(relations) {
+  const snapshot = cloneRelations(relations)
+  const current = relationsHistory.value[historyIndex.value]
+  if (current && JSON.stringify(current) === JSON.stringify(snapshot)) return
+  relationsHistory.value = relationsHistory.value.slice(0, historyIndex.value + 1)
+  relationsHistory.value.push(snapshot)
+  historyIndex.value = relationsHistory.value.length - 1
+}
+
+function applyRelations(relations, { dirty = true, recordHistory = true } = {}) {
+  if (!result.value) return
+  result.value.relations = relations
+  result.value.stats = { ...(result.value.stats || {}), relation_count: relations.length }
+  const counts = {}
+  for (const r of relations) counts[r.relation] = (counts[r.relation] || 0) + 1
+  result.value.relation_type_counts = counts
+  syncEntitySnapshot(relations)
+  if (recordHistory) pushRelationHistory(relations)
+  if (dirty) relationsDirty.value = true
+}
+
 function applyResult(payload, recordId = null) {
   resultVersion.value += 1
   result.value = payload
@@ -480,7 +597,9 @@ function applyResult(payload, recordId = null) {
   relationsDirty.value = false
   savingRelations.value = false
   syncEntitySnapshot(payload.relations || [])
+  resetRelationHistory(payload.relations || [])
   refreshStats()
+  syncShareUrl()
   nextTick(updateIndicator)
 }
 
@@ -493,11 +612,16 @@ async function runExtract({ save = true } = {}) {
     ElMessage.warning('请先输入或上传一段文本')
     return
   }
+  cancelPendingExtract()
+  const seq = extractSeq
+  const controller = new AbortController()
+  extractController = controller
   loading.value = true
   loadError.value = ''
   liveMessage.value = '正在抽取，请稍候'
   try {
-    const res = await api.extractText(text.value, title.value, save)
+    const res = await api.extractText(text.value, title.value, save, { signal: controller.signal })
+    if (seq !== extractSeq) return
     applyResult(res.result, res.record_id)
     liveMessage.value = `抽取完成：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系`
     if (save) {
@@ -506,10 +630,15 @@ async function runExtract({ save = true } = {}) {
       )
     }
   } catch (err) {
+    // 主动取消或被更新的请求取代，都不该弹错误、也不该覆盖已有结果
+    if (controller.signal.aborted || seq !== extractSeq) return
     loadError.value = err.message
     liveMessage.value = `抽取失败：${err.message}`
   } finally {
-    loading.value = false
+    if (seq === extractSeq) {
+      loading.value = false
+      extractController = null
+    }
   }
 }
 
@@ -521,6 +650,8 @@ async function saveCurrent() {
     const res = await api.saveSnapshot(result.value, title.value, 'text')
     activeRecordId.value = res.record_id
     relationsDirty.value = false
+    resetRelationHistory(result.value.relations || [])
+    syncShareUrl()
     await refreshStats()
     liveMessage.value = `已存入历史 #${res.record_id}`
     ElMessage.success(`已存入历史 #${res.record_id}`)
@@ -532,14 +663,7 @@ async function saveCurrent() {
 }
 
 function onRelationsChange(relations) {
-  if (!result.value) return
-  result.value.relations = relations
-  result.value.stats = { ...(result.value.stats || {}), relation_count: relations.length }
-  const counts = {}
-  for (const r of relations) counts[r.relation] = (counts[r.relation] || 0) + 1
-  result.value.relation_type_counts = counts
-  syncEntitySnapshot(relations)
-  relationsDirty.value = true
+  applyRelations(relations)
 }
 
 async function saveCorrections() {
@@ -555,7 +679,9 @@ async function saveCorrections() {
       result.value.relations || [],
       result.value.entities || [],
     )
-    onRelationsChange(record.relations || [])
+    const saved = record.relations || []
+    applyRelations(saved, { dirty: false, recordHistory: false })
+    resetRelationHistory(saved)
     relationsDirty.value = false
     await refreshStats()
     liveMessage.value = `校正已保存，共 ${record.relation_count} 条三元组`
@@ -567,13 +693,100 @@ async function saveCorrections() {
   }
 }
 
+function undo() {
+  if (!canUndo.value) return
+  historyIndex.value -= 1
+  applyRelations(cloneRelations(relationsHistory.value[historyIndex.value]), {
+    dirty: true,
+    recordHistory: false,
+  })
+  liveMessage.value = '已撤销上一步校正'
+}
+
+function redo() {
+  if (!canRedo.value) return
+  historyIndex.value += 1
+  applyRelations(cloneRelations(relationsHistory.value[historyIndex.value]), {
+    dirty: true,
+    recordHistory: false,
+  })
+  liveMessage.value = '已重做校正'
+}
+
+/** 把当前结果另存为一条新记录，不覆盖原记录。 */
+async function saveAsSnapshot() {
+  if (!result.value) return null
+  savingRelations.value = true
+  try {
+    const res = await api.saveSnapshot(result.value, title.value, 'text')
+    activeRecordId.value = res.record_id
+    relationsDirty.value = false
+    resetRelationHistory(result.value.relations || [])
+    syncShareUrl()
+    await refreshStats()
+    ElMessage.success(`已另存为历史记录 #${res.record_id}`)
+    return res.record_id
+  } catch (err) {
+    ElMessage.error(err.message)
+    return null
+  } finally {
+    savingRelations.value = false
+  }
+}
+
+function syncShareUrl() {
+  if (page.value !== 'app') return
+  const url = new URL(location.href)
+  if (activeRecordId.value) url.searchParams.set('record', String(activeRecordId.value))
+  else url.searchParams.delete('record')
+  const filterName = entityFilter.value?.name
+  if (filterName) url.searchParams.set('q', filterName)
+  else url.searchParams.delete('q')
+  const next = url.pathname + url.search + url.hash
+  const current = location.pathname + location.search + location.hash
+  if (next !== current) history.replaceState(null, '', next)
+}
+
+async function copyShareLink() {
+  if (!result.value) return
+  if (!activeRecordId.value) {
+    const id = await saveAsSnapshot()
+    if (!id) return
+  }
+  syncShareUrl()
+  const url = location.href
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url)
+    } else {
+      const input = document.createElement('textarea')
+      input.value = url
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      input.remove()
+    }
+    ElMessage.success('分享链接已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动复制地址栏链接')
+  }
+}
+
 const EXPORT_MIME = {
   csv: 'text/csv;charset=utf-8',
   json: 'application/json;charset=utf-8',
   md: 'text/markdown;charset=utf-8',
+  graphml: 'application/graphml+xml;charset=utf-8',
+  cypher: 'text/plain;charset=utf-8',
 }
 
-const EXPORT_BUILDERS = { csv: buildCsv, json: buildJson, md: buildMarkdown }
+const EXPORT_BUILDERS = {
+  csv: buildCsv,
+  json: buildJson,
+  md: buildMarkdown,
+  graphml: buildGraphml,
+  cypher: buildCypher,
+}
 
 /** 导出当前结果：CSV / JSON / Markdown 由工具模块生成，PNG 取自图表实例。 */
 function onExport(kind) {
@@ -605,23 +818,34 @@ function onExport(kind) {
 }
 
 async function onFile(file) {
+  cancelPendingExtract()
+  const seq = extractSeq
+  const controller = new AbortController()
+  extractController = controller
   loading.value = true
   loadError.value = ''
   try {
-    const res = await api.extractFile(file, true)
+    const res = await api.extractFile(file, true, { signal: controller.signal })
+    if (seq !== extractSeq) return
     text.value = res.result.text
     title.value = file.name.replace(/\.[^.]+$/, '')
     applyResult(res.result, res.record_id)
     ElMessage.success(`${file.name} 解析完成：${res.result.stats.relation_count} 条关系`)
   } catch (err) {
+    if (controller.signal.aborted || seq !== extractSeq) return
     loadError.value = err.message
     ElMessage.error(err.message)
   } finally {
-    loading.value = false
+    if (seq === extractSeq) {
+      loading.value = false
+      extractController = null
+    }
   }
 }
 
 function onClear() {
+  cancelPendingExtract()
+  loading.value = false
   result.value = null
   activeRecordId.value = null
   entityFilter.value = null
@@ -629,6 +853,9 @@ function onClear() {
   loadError.value = ''
   relationsDirty.value = false
   savingRelations.value = false
+  relationsHistory.value = []
+  historyIndex.value = -1
+  syncShareUrl()
 }
 
 function onLoadRecord(record) {
@@ -720,19 +947,43 @@ onMounted(async () => {
     samples.value = sampleList
     schema.value = schemaData
     stats.value = statData
-    if (sampleList.length) {
-      text.value = sampleList[0].content
-      title.value = sampleList[0].title
-      // 预览模式：只展示抽取效果，不写历史记录
-      await runExtract({ save: false })
+
+    // 分享链接优先：?record=12 直接复现那条历史，而不是覆盖成默认示例
+    const params = new URLSearchParams(location.search)
+    const sharedId = Number(params.get('record'))
+    if (Number.isInteger(sharedId) && sharedId > 0) {
+      try {
+        onLoadRecord(await api.getRecord(sharedId))
+      } catch {
+        ElMessage.warning(`分享的记录 #${sharedId} 不存在，已载入示例`)
+        await loadDefaultSample(sampleList)
+      }
+    } else {
+      await loadDefaultSample(sampleList)
     }
+
+    const filterName = params.get('q')
+    if (filterName) {
+      entityFilter.value = { name: filterName }
+      if (!hashTab) tab.value = 'triples'
+    }
+    syncShareUrl()
   } catch (err) {
     loadError.value = `后端未连通：${err.message}`
     ElMessage.error(`后端未连通：${err.message}`)
   }
 })
 
+async function loadDefaultSample(sampleList) {
+  if (!sampleList.length) return
+  text.value = sampleList[0].content
+  title.value = sampleList[0].title
+  // 预览模式：只展示抽取效果，不写历史记录
+  await runExtract({ save: false })
+}
+
 onBeforeUnmount(() => {
+  cancelPendingExtract()
   window.removeEventListener('popstate', onPopstate)
   window.removeEventListener('keydown', onGlobalKeydown)
   window.removeEventListener('resize', updateIndicator)

@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | `/` | 产品首页（`LandingPage.vue`） | 用可交互的真实结果说明系统做什么，并把访问者送到工作台 |
 | `/app` | 抽取工作台（`App.vue`） | 实际输入、抽取、核对、导出、查历史 |
+| `/app?record=12#triples` | 结果深链 | 打开即复现第 12 条历史记录并停在三元组页；`?q=实体名` 可带筛选 |
 | `/#entities`、`/#triples`、`/#graph`、`/#stats` | 工作台对应页签 | 兼容书签与旧链接 |
 | 其他路径 | 品牌 404 | 引导回首页或工作台 |
 
@@ -35,7 +36,7 @@
 | **结果导出** | 右上角统一导出菜单：三元组 **CSV**（带 BOM，Excel 打开不乱码，表头含规范化名，可导入 Neo4j）、完整 **JSON**、**Markdown** 分析报告（含统计表 / 实体表 / 证据句 / 原文）、关系图谱 **PNG** |
 | **历史记录** | 页面初始化时的示例抽取仅作预览、**不写库**（避免刷新产生重复记录）；「存入历史」保存当前结果快照（含人工校正），支持按标题/正文检索、分页、载入复现、单条删除与一键清空 |
 | **效果评测** | `eval/` 下提供 10 段人工标注金标准集与 P/R/F1 评测脚本，输出整体与分类型指标及漏抽/误抽明细 |
-| **交互体验** | 内置 4 条中文新闻示例（一键切换并自动抽取）、空状态引导、字数计数、错误提示、响应式布局（≤1120px 单列）；结果与证据双向联动（表格→原文定位、图谱→三元组下钻、统计→原文定位）；结果就绪后左栏自动收窄为摘要卡，正文阅读宽度 +40% |
+| **交互体验** | 内置 4 条中文新闻示例（一键切换并自动抽取）、空状态引导、字数计数、错误提示、响应式布局（≤1120px 单列）；结果与证据双向联动（表格→原文定位、图谱→三元组下钻、统计→原文定位）；结果就绪后左栏自动收窄为摘要卡；图谱超过 80 个节点自动降级为环形布局并关闭力导向动画与标签 |
 
 ### 界面截图
 
@@ -56,6 +57,10 @@
 | 统计洞察 | 历史记录 |
 | --- | --- |
 | ![统计](docs/screenshots/04-stats.png) | ![历史](docs/screenshots/05-history.png) |
+
+人工校正态：表格里带「人工」标记的行、撤销 / 重做、保存校正与「另存副本」都在同一条工具栏上。
+
+![人工校正](docs/screenshots/09-correction.png)
 
 两个交互设计点（截图里是静态的，实际是联动的）：
 
@@ -128,9 +133,10 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # P/R/F1 评测脚本（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest 回归测试（28 条，临时库隔离）
+│  ├─ tests/                  # pytest 回归测试（40 条，临时库隔离）
 │  │  ├─ conftest.py          # APP_DB_PATH 指向 tmp_path，不碰真实 app.db
-│  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越
+│  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越（16 条）
+│  │  ├─ test_features.py     # FTS5/增量计数/批量/自定义规则/健康信息（12 条）
 │  │  ├─ test_corrections.py  # 词典 / 快照 / 人工校正接口
 │  │  └─ test_nlp.py          # 主语链 / 双方 / 后者供应的点状回归
 │  ├─ pytest.ini              # testpaths 与 pythonpath
@@ -153,13 +159,15 @@
 │  │     ├─ TripleTable.vue     # 三元组表格（过滤/校正/定位/导出 CSV）
 │  │     ├─ RelationGraph.vue   # ECharts 关系图（布局切换/标签/合并/导出）
 │  │     ├─ StatsOverview.vue   # 指标卡、类型分布、句级统计、全库累计
-│  │     └─ HistoryDrawer.vue   # 历史记录抽屉（检索/载入/删除/清空）
+│  │     ├─ HistoryDrawer.vue   # 历史记录抽屉（检索/载入/删除/清空）
+│  │     ├─ DictionaryDialog.vue# 实体词典与关系触发词两个配置页
+│  │     └─ BatchDialog.vue     # 批量抽取：文件/文本队列、进度、跨文档聚合
 │  ├─ tests/                  # Vitest：实体同步 / 标签映射 / 导出列
 │  ├─ eslint.config.js        # ESLint 9 flat config（Vue + browser globals）
 │  ├─ public/                 # favicon.svg、fonts/（本地西文字体）、media/（首页视图裁切图）
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
-├─ docs/screenshots/          # 首页 3 张 + 工作台 5 张实际截图
+├─ docs/screenshots/          # 首页 3 张 + 工作台 6 张实际截图
 └─ README.md
 ```
 
@@ -231,7 +239,7 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 ```bash
 cd backend
 python -m pip install -r requirements-dev.txt
-python -m pytest           # 28 passed
+python -m pytest           # 40 passed
 
 cd ../frontend
 npm install
@@ -239,7 +247,14 @@ npm run lint
 npm test                   # 16 passed
 ```
 
-`tests/conftest.py` 通过环境变量 `APP_DB_PATH` 把 SQLite 指向 `tmp_path` 下的临时库，测试不会污染 `backend/data/app.db`。后端覆盖：内置示例基线、输入校验、上传编码、静态路径穿越、历史记录、自定义词典、快照保存、人工校正写回，以及主语链 / 双方 / 后者供应三条关键 NLP 机制。前端用 Vitest 覆盖实体归一与实体同步、规则来源标签、CSV / Markdown 的人工校正来源列；ESLint 负责组件与工具脚本的静态检查。
+`tests/conftest.py` 通过环境变量 `APP_DB_PATH` 把 SQLite 指向 `tmp_path` 下的临时库，测试不会污染 `backend/data/app.db`。
+
+- `test_api.py`（16 条）：内置示例结果基线（18 实体 / 9 三元组）、空文本 400、超限 413、非 txt 415、记录不存在 404、`save=false` 不写库、UTF-8 / GBK / BIG5 / UTF-16 上传后逐字比对、SPA 静态路由不能把源码 / README / 数据库拖走。
+- `test_features.py`（12 条）：FTS5 中文子串检索与语法字符降级、增量计数在保存 / 校正 / 删除 / 清空后与库内真值一致、批量文本与批量文件（混合编码）、单篇失败不打断整批、自定义触发词热生效与删除后失效、规则校验、健康信息字段、快照校正写回。
+- `test_corrections.py`（9 条）：自定义词典、快照保存、人工校正写回、实体快照与非法输入。
+- `test_nlp.py`（3 条）：主语链、跨句双方、后者供应方向。
+
+前端用 Vitest 覆盖实体归一与实体同步、规则来源标签、CSV / Markdown 的人工校正来源列；ESLint 负责组件与工具脚本的静态检查。
 
 ---
 
@@ -334,10 +349,13 @@ npm test                   # 16 passed
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 健康检查，返回引擎标识 |
-| `POST` | `/api/extract` | 请求体 `{text, title, save}`，返回 `{record_id, result}` |
+| `GET` | `/api/health` | 健康检查：版本、19 类关系数、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限 |
+| `POST` | `/api/extract` | 请求体 `{text, title, save}`，返回 `{record_id, result}`；并发超额返回 429 |
 | `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text`（≤2MB），自动识别编码 |
-| `GET` | `/api/records` | 历史记录分页，参数 `limit / offset / keyword` |
+| `POST` | `/api/extract/batch` | 请求体 `{items: [{text, title}], save}`，最多 20 篇；返回逐篇摘要 + 跨文档聚合，单篇失败不打断 |
+| `POST` | `/api/extract/batch/files` | `multipart/form-data` 多文件批量（字段名 `files`），编码逐个识别 |
+| `GET` | `/api/records` | 历史记录分页，参数 `limit / offset / keyword`；≥3 字走 FTS5 trigram 索引，短词回退 LIKE |
+| `POST` | `/api/records` | 把当前结果另存为快照（三元组会先做类型与长度校验） |
 | `GET` | `/api/records/{id}` | 单条记录详情（含实体与三元组） |
 | `POST` | `/api/records` | 保存当前结果快照，请求体 `{title, source, result}` |
 | `PUT` | `/api/records/{id}/relations` | 用人工校正后的三元组整体替换，并回写记录计数 |
@@ -350,6 +368,12 @@ npm test                   # 16 passed
 | `GET` | `/api/stats` | 全库统计：记录数、实体数、三元组数、平均耗时、热门关系、活跃实体 |
 | `GET` | `/api/samples` | 内置示例新闻 |
 | `GET` | `/api/schema` | 实体类型与关系类型目录（含颜色，供前端渲染） |
+| `GET` / `POST` / `DELETE` | `/api/dictionary` | 自定义实体词条：列表、新增（含重复检测）、删除单条 / 清空 |
+| `GET` / `POST` / `DELETE` | `/api/rules` | 自定义关系触发词：列表（附 19 类内置触发词）、给某类追加触发词、删除 / 清空 |
+
+`GET /api/rules` 同时返回每类关系的内置触发词，供配置界面展示；自定义触发词按签名原地更新 `lexicon.TRIGGER_INDEX`，下一次抽取立即生效，不改 19 类关系目录。
+
+对外部署时可设 `APP_ALLOWED_ORIGINS`（逗号分隔，默认 `*`）收敛 CORS、设 `APP_API_TOKEN` 后所有非只读 `/api` 请求须带 `X-API-Token`，另可用 `APP_MAX_CONCURRENT_EXTRACT` 调整并发额度（默认 4）。三项都默认不启用，本机开箱即用。
 
 `result` 结构：
 
@@ -407,7 +431,16 @@ CREATE TABLE relations (
 
 `head_canonical / tail_canonical` 存归一后的实体名，使"腾讯控股"与"腾讯"在统计聚合中落到同一条记录——否则全库排行榜会把同一实体拆成多行。旧库在启动时由 `db._migrate()` 自动补列并回填（幂等）。
 
-连接层开启 `journal_mode=WAL` 与 `busy_timeout=5000`，避免一个写请求把整个库锁住导致并发请求报 `database is locked`。
+除上面两张业务表外，还有四张支撑表：
+
+| 表 | 作用 |
+| --- | --- |
+| `custom_terms` | 用户自定义实体词条，抽取时优先于内置词典 |
+| `custom_rules` | 用户给 19 类关系追加的领域触发词，`(relation_key, trigger)` 唯一 |
+| `counters` | 单行增量计数（记录 / 字数 / 实体 / 关系 / 耗时总和），写路径同步维护，启动时从 `records` 重算一次保证旧库一致；`/api/stats` 的总量不再对全表做 `SUM / AVG` |
+| `records_fts` | FTS5 外部内容虚表（`tokenize='trigram'`，`content='records'`），由三个 trigger 同步增删改；启动时 `rebuild` 回填历史数据 |
+
+连接层开启 `journal_mode=WAL`（每个库只设一次）与 `busy_timeout=5000`，连接按线程复用，避免每个请求重开连接、重设 PRAGMA。SQLite 未编入 FTS5 或版本低于 3.34 时，全文检索自动回退 `LIKE`，功能不降级、只是失去索引加速。
 
 ---
 
@@ -461,7 +494,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 
 1. **规则驱动，泛化有限。** 未训练序列标注模型，遇到词典与模板完全未覆盖的领域实体（如小众初创公司、生僻人名）会漏识别；不在 19 类关系内的语义会被直接丢弃而不是误报。可通过「自定义词典」补充领域实体，但仍需人工维护。
 2. **是轻量指代，不是完整共指消解。** 关系抽取主体仍在单句内；只处理「该工厂 / 双方 / 后者 / 前者」等有限模式与「并 / 且 / 也」主语链，不解析「他 / 其」的多层嵌套，也不支持跨段话题切换与跨句因果、时序关系。
-3. **长文本上限 20000 字**（超出返回 400），上传文件上限 2MB（超出返回 413）。
+3. **长文本上限 20000 字**（超出返回 413），上传文件上限 2MB（超出也返回 413）。
 4. 长度超过 13 字的超长机构名可能被截断（后缀构词窗口限制）。
 5. **单句内实体过多时**，窗口截断可能导致少数远距离关系漏抽。
 6. **人工校正范围有限**：可增删改三元组；新增关系会尝试按原文补实体并重算实体统计，但实体文本若未在原文出现，只会进入三元组/图谱，不会进入标注页。
@@ -469,13 +502,28 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 
 ---
 
-## 十一、开发说明
+## 十一、开发说明与性能基线
 
-- 新增关系类型：在 `backend/app/nlp/lexicon.py` 的 `RELATION_RULES` 中追加 `RelationRule`（key/label/颜色/头尾类型/触发词/说明），如需句法模板再向 `SPECIAL_PATTERNS` 追加一条 `(模板, 关系key, 头序号, 尾序号)`。
-- 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典。
+- 新增关系类型：在 `backend/app/nlp/lexicon.py` 的 `RELATION_RULES` 中追加 `RelationRule`（key/label/颜色/头尾类型/触发词/说明），如需句法模板再向 `SPECIAL_PATTERNS` 追加一条 `(模板, 关系key, 头序号, 尾序号)`。**只补触发词**不必改代码：用界面的「领域配置 → 关系触发词」或 `POST /api/rules`，保存后下一次抽取即生效。
+- 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典；临时补词走界面的「自定义实体词典」。
+- **样式分层**：`styles.css` 是首页与工作台共用的基础层；Element Plus 的组件库 CSS 与皮肤覆盖放在 `element-setup.js` / `element-overrides.css`，只在 `/app` 动态加载。新增 `--el-*` 变量或组件级覆盖时请写进 `element-overrides.css`（选择器保留 `html` 前缀），否则首页会白下载组件样式、工作台会被默认蓝盖掉。
 - 修改后建议执行 `python devtools/check.py` 做回归，再 `npm run build` 刷新前端产物。
 - 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`；前端运行 `npm run lint && npm test && npm run build`。CI（`.github/workflows/ci.yml`）会自动执行以上检查。
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。
 - `npm run build` 会清空 `frontend/dist/`，截图辅助文件之类的临时内容不要留在 `dist/` 里。
+
+### 交付基线（2026-11-15 实测）
+
+| 项目 | 结论 |
+| --- | --- |
+| 接口回归 | `python -m pytest -q` → **28 passed**（16 条接口 + 12 条新能力），`APP_DB_PATH` 临时库隔离 |
+| 生产构建 | `npm run build` 通过、**无体积警告**。首页：1 个 JS 入口 **271.6 KB（gzip 103.6 KB）** + 基础 CSS 41.3 KB（gzip 7.9 KB），**完全不请求 Element Plus**；工作台按需加载 `element-setup` JS 288.3 KB / CSS 365 KB，图谱 chunk 443 KB 独立加载 |
+| 前端分包 | 工作台组件全部异步 chunk；`main.js` 按 `pathname` 决定是否动态注册 Element Plus，图标由各组件局部引入；`RelationGraph.vue` 只注册 graph / tooltip / CanvasRenderer；超过 80 节点自动降级环形布局 |
+| 传输与缓存 | `GZipMiddleware`；`/assets/*` 带内容 hash 返回 `Cache-Control: public, max-age=31536000, immutable`，媒体与字体缓存一天，SPA 入口 `no-cache`，发版立即生效 |
+| 数据层 | 连接按线程复用、`journal_mode=WAL` 每库只设一次；`counters` 增量统计 + 5 秒短缓存（写操作主动失效）；FTS5 trigram 中文子串检索，短词 / 不含 FTS5 的环境自动回退 LIKE；历史列表只查所需列 + `substr(text,1,200)` 摘要 |
+| 上传与并发 | 候选编码只对前 16 KB 采样打分再解全文；抽取用 `BoundedSemaphore` 限流（默认 4，超额 429）；单文件与批量端点都跑在线程池，不阻塞事件循环 |
+| 批量与校正 | 批量最多 20 篇，单篇失败不打断，返回跨文档高频实体 / 关系 / 三元组；人工校正支持撤销重做、另存副本、保存前后 diff 提示，预览态也能保存为新记录 |
+| 深链与导出 | `/app?record=12#triples` 与 `?q=实体名` 可复现，复制链接按钮同步当前状态；导出新增 GraphML（XML 转义）与 Neo4j Cypher（MERGE + 字符串转义），两种内容均实测通过 |
+| 端到端复核 | 服务在 8000：`/`、`/app`、`/docs`、`/api/health` 均 200；CDP 实测首页只加载 1 个 JS / 1 个 CSS、`--el-color-primary=#a8322a`、1440 / 390 无横向溢出；编辑三元组 → 保存 → `?record=` 深链复现全链路打通；批量对话框、6 项导出菜单、图谱 canvas 均正常；校正态截图见 `docs/screenshots/09-correction.png`（测试数据已清理） |
