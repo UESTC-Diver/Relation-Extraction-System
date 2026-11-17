@@ -83,7 +83,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Search } from '@element-plus/icons-vue'
 import * as api from '../api/client'
 
-const props = defineProps({
+defineProps({
   modelValue: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'load'])

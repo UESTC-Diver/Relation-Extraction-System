@@ -290,6 +290,7 @@ import {
 } from '@element-plus/icons-vue'
 import * as api from './api/client'
 import { download, buildCsv, buildJson, buildMarkdown, safeFilename } from './utils/export'
+import { syncEntities as buildSyncedEntities } from './utils/entities'
 import TextWorkbench from './components/TextWorkbench.vue'
 import EntityAnnotator from './components/EntityAnnotator.vue'
 import TripleTable from './components/TripleTable.vue'
@@ -447,91 +448,26 @@ async function refreshStats() {
   }
 }
 
-function entityMetaOf(type) {
-  return (schema.value.entity_types || []).find((t) => t.key === type) || {}
-}
-
-function entityKeyOf(type, canonical, text) {
-  return `${type}:${canonical || text}`
-}
-
-function findOccurrences(text, value) {
-  if (!text || !value) return []
-  const spans = []
-  let from = 0
-  while (from <= text.length - value.length) {
-    const idx = text.indexOf(value, from)
-    if (idx < 0) break
-    spans.push([idx, idx + value.length])
-    from = idx + value.length
-  }
-  return spans
-}
-
-function sentenceIndexAt(start) {
-  const sentences = result.value?.sentences || []
-  const hit = sentences.find(
-    (s) => Number.isInteger(s.start) && Number.isInteger(s.end) && s.start <= start && start < s.end,
-  )
-  return hit ? hit.index : -1
-}
-
 /**
- * 人工校正可能引用自动识别没覆盖到的实体。把这些实体补进实体清单，
- * 并重算实体数量/类型分布，避免三元组、标注页和统计各说各话。
+ * 校正后同步实体快照：补上关系里出现但实体清单没有的实体，并重算统计。
+ * 具体逻辑在 utils/entities.js，便于单独测试。
  */
-function syncEntities(relations) {
+function syncEntitySnapshot(relations) {
   if (!result.value) return
   const data = result.value
-  const text = data.text || ''
-  const base = (data.entities || []).filter((e) => e.source !== 'manual')
-  const occupied = base
-    .filter((e) => Number.isInteger(e.start) && Number.isInteger(e.end))
-    .map((e) => [e.start, e.end])
-  const known = new Set(base.map((e) => entityKeyOf(e.type, e.canonical, e.text)))
-  const added = []
-  let seq = 0
-
-  const consider = (value, type, canonical) => {
-    if (!value) return
-    const key = entityKeyOf(type, canonical, value)
-    if (known.has(key)) return
-    known.add(key)
-    const meta = entityMetaOf(type)
-    for (const [start, end] of findOccurrences(text, value)) {
-      if (occupied.some(([s, e]) => start < e && s < end)) continue
-      occupied.push([start, end])
-      added.push({
-        id: `manual-e${Date.now()}-${(seq += 1)}`,
-        text: value,
-        canonical: canonical || value,
-        type,
-        type_label: meta.label || type,
-        color: meta.color || '#64748b',
-        start,
-        end,
-        sentence_index: sentenceIndexAt(start),
-        source: 'manual',
-        confidence: 1,
-      })
-    }
-  }
-
-  for (const r of relations) {
-    consider(r.head, r.head_type, r.head_canonical)
-    consider(r.tail, r.tail_type, r.tail_canonical)
-  }
-
-  const entities = [...base, ...added].sort((a, b) => (a.start ?? 0) - (b.start ?? 0))
-  data.entities = entities
-  const counts = {}
-  for (const t of schema.value.entity_types || []) counts[t.key] = 0
-  for (const e of entities) counts[e.type] = (counts[e.type] || 0) + 1
-  data.entity_type_counts = counts
+  const synced = buildSyncedEntities({
+    text: data.text || '',
+    entities: data.entities || [],
+    sentences: data.sentences || [],
+    relations,
+    entityTypes: schema.value.entity_types || [],
+  })
+  data.entities = synced.entities
+  data.entity_type_counts = synced.entityTypeCounts
   data.stats = {
     ...(data.stats || {}),
-    entity_count: entities.length,
-    unique_entity_count: new Set(entities.map((e) => e.text)).size,
+    entity_count: synced.entityCount,
+    unique_entity_count: synced.uniqueEntityCount,
   }
 }
 
@@ -543,7 +479,7 @@ function applyResult(payload, recordId = null) {
   link.value = null
   relationsDirty.value = false
   savingRelations.value = false
-  syncEntities(payload.relations || [])
+  syncEntitySnapshot(payload.relations || [])
   refreshStats()
   nextTick(updateIndicator)
 }
@@ -602,7 +538,7 @@ function onRelationsChange(relations) {
   const counts = {}
   for (const r of relations) counts[r.relation] = (counts[r.relation] || 0) + 1
   result.value.relation_type_counts = counts
-  syncEntities(relations)
+  syncEntitySnapshot(relations)
   relationsDirty.value = true
 }
 

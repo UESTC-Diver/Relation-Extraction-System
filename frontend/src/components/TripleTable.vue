@@ -252,6 +252,8 @@
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Close, Download, Plus, Search } from '@element-plus/icons-vue'
+import { canonicalize, hasSentenceIndex, normalizeSentenceIndex } from '../utils/entities'
+import { ruleLabel } from '../utils/labels'
 
 const props = defineProps({
   relations: { type: Array, default: () => [] },
@@ -319,19 +321,6 @@ const dialogOpen = ref(false)
 const editingIndex = ref(null)
 const form = ref(emptyForm())
 
-const ORG_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '集团公司', '集团', '控股', '公司']
-
-/** 与后端 canonical_name 保持一致，保存前导出的 CSV 也使用规范化名。 */
-function canonicalize(text, type) {
-  if (type !== 'ORG') return text
-  let result = text
-  for (;;) {
-    const suffix = ORG_SUFFIXES.find((s) => result.endsWith(s) && result.length - s.length >= 2)
-    if (!suffix) return result
-    result = result.slice(0, -suffix.length)
-  }
-}
-
 function shortText(text) {
   const value = String(text || '').replace(/\s+/g, ' ').trim()
   return value.length > 30 ? `${value.slice(0, 30)}…` : value
@@ -347,10 +336,6 @@ function openAdd() {
   editingIndex.value = null
   form.value = emptyForm()
   dialogOpen.value = true
-}
-
-function hasSentenceIndex(row) {
-  return Number.isInteger(row.sentence_index) && row.sentence_index >= 0
 }
 
 function openEdit(row) {
@@ -388,10 +373,7 @@ function confirm() {
     original && original.tail === tail && original.tail_type === form.value.tail_type
       ? original.tail_canonical || tail
       : canonicalize(tail, form.value.tail_type)
-  const sentenceIndex =
-    typeof form.value.sentence_index === 'number' && form.value.sentence_index >= 0
-      ? form.value.sentence_index
-      : -1
+  const sentenceIndex = normalizeSentenceIndex(form.value.sentence_index)
 
   const row = {
     id: original?.id || `manual-${Date.now()}`,
@@ -474,22 +456,6 @@ function confColor(v) {
   if (v >= 0.9) return '#15803d'
   if (v >= 0.75) return '#b45309'
   return '#6b7280'
-}
-
-const RULE_LABEL = {
-  pattern: '句式模板',
-  trigger: '触发词',
-  passive: '被动句',
-  conjunction: '并列结构',
-  postmodifier: '后置定语',
-  attributive: '职位线索',
-  coref: '指代消解',
-  chain: '主语链',
-  manual: '人工校正',
-}
-
-function ruleLabel(base) {
-  return RULE_LABEL[base] || base || '—'
 }
 
 function exportCsv() {

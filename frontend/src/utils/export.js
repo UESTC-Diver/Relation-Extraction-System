@@ -10,6 +10,8 @@
 const BOM = '\ufeff'
 const ILLEGAL_CHARS = /[\\/:*?"<>|\r\n]/g
 
+import { ruleLabel } from './labels'
+
 const TYPE_LABEL = {
   PERSON: '人物',
   ORG: '组织机构',
@@ -17,22 +19,6 @@ const TYPE_LABEL = {
   TIME: '时间',
   MONEY: '金额',
   PRODUCT: '产品技术',
-}
-
-const RULE_BASE_LABEL = {
-  pattern: '句式模板',
-  trigger: '触发词',
-  passive: '被动句',
-  conjunction: '并列结构',
-  postmodifier: '后置定语',
-  attributive: '职位线索',
-  coref: '指代消解',
-  chain: '主语链',
-  manual: '人工校正',
-}
-
-function ruleBaseLabel(base) {
-  return RULE_BASE_LABEL[base] || base || '—'
 }
 
 function pad(n) {
@@ -181,7 +167,7 @@ export function buildMarkdown(result, meta) {
       lines.push(
         `| ${mdCell(r.head)} | ${mdCell(r.relation_label || r.relation)} | ` +
           `${mdCell(r.tail)} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} | ` +
-          `${mdCell(ruleBaseLabel(r.rule_base))} |`,
+          `${mdCell(ruleLabel(r.rule_base))} |`,
       )
     }
     lines.push('')

@@ -128,9 +128,11 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # P/R/F1 评测脚本（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（25 条，临时库隔离）
+│  ├─ tests/                  # pytest 回归测试（28 条，临时库隔离）
 │  │  ├─ conftest.py          # APP_DB_PATH 指向 tmp_path，不碰真实 app.db
-│  │  └─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越
+│  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越
+│  │  ├─ test_corrections.py  # 词典 / 快照 / 人工校正接口
+│  │  └─ test_nlp.py          # 主语链 / 双方 / 后者供应的点状回归
 │  ├─ pytest.ini              # testpaths 与 pythonpath
 │  ├─ requirements.txt
 │  └─ requirements-dev.txt    # pytest + httpx + ruff
@@ -140,6 +142,8 @@
 │  │  ├─ main.js / styles.css # Element Plus 注册、全局设计系统
 │  │  ├─ api/client.js        # Axios 封装（抽取/记录/校正/词典/统计/示例）
 │  │  ├─ utils/export.js      # 导出构建：CSV / JSON / Markdown + 文件名清洗
+│  │  ├─ utils/entities.js    # 实体归一、原文定位、校正后的实体同步
+│  │  ├─ utils/labels.js      # 抽取来源 / 规则标签的唯一映射
 │  │  ├─ data/landing-demo.json # 首页演示数据：pipeline 真实抽取结果与关系目录
 │  │  └─ components/
 │  │     ├─ LandingPage.vue    # 产品首页：接口契约面板、价值段、能力切换器、CTA
@@ -150,6 +154,8 @@
 │  │     ├─ RelationGraph.vue   # ECharts 关系图（布局切换/标签/合并/导出）
 │  │     ├─ StatsOverview.vue   # 指标卡、类型分布、句级统计、全库累计
 │  │     └─ HistoryDrawer.vue   # 历史记录抽屉（检索/载入/删除/清空）
+│  ├─ tests/                  # Vitest：实体同步 / 标签映射 / 导出列
+│  ├─ eslint.config.js        # ESLint 9 flat config（Vue + browser globals）
 │  ├─ public/                 # favicon.svg、fonts/（本地西文字体）、media/（首页视图裁切图）
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
@@ -225,10 +231,15 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 ```bash
 cd backend
 python -m pip install -r requirements-dev.txt
-python -m pytest -q        # 16 passed
+python -m pytest           # 28 passed
+
+cd ../frontend
+npm install
+npm run lint
+npm test                   # 16 passed
 ```
 
-`tests/conftest.py` 通过环境变量 `APP_DB_PATH` 把 SQLite 指向 `tmp_path` 下的临时库，测试不会污染 `backend/data/app.db`。覆盖：内置示例结果基线（18 实体 / 9 三元组）、空文本 400、超限 413、非 txt 415、记录不存在 404、`save=false` 不写库、UTF-8 / GBK / BIG5 / UTF-16 上传后逐字比对，以及 SPA 静态路由不能把源码、README 或数据库拖走。
+`tests/conftest.py` 通过环境变量 `APP_DB_PATH` 把 SQLite 指向 `tmp_path` 下的临时库，测试不会污染 `backend/data/app.db`。后端覆盖：内置示例基线、输入校验、上传编码、静态路径穿越、历史记录、自定义词典、快照保存、人工校正写回，以及主语链 / 双方 / 后者供应三条关键 NLP 机制。前端用 Vitest 覆盖实体归一与实体同步、规则来源标签、CSV / Markdown 的人工校正来源列；ESLint 负责组件与工具脚本的静态检查。
 
 ---
 
@@ -463,7 +474,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 新增关系类型：在 `backend/app/nlp/lexicon.py` 的 `RELATION_RULES` 中追加 `RelationRule`（key/label/颜色/头尾类型/触发词/说明），如需句法模板再向 `SPECIAL_PATTERNS` 追加一条 `(模板, 关系key, 头序号, 尾序号)`。
 - 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典。
 - 修改后建议执行 `python devtools/check.py` 做回归，再 `npm run build` 刷新前端产物。
-- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`；CI（`.github/workflows/ci.yml`）也会自动执行这三步并检查构建。
+- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`；前端运行 `npm run lint && npm test && npm run build`。CI（`.github/workflows/ci.yml`）会自动执行以上检查。
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。
