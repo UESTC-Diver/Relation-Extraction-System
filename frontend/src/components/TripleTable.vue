@@ -62,29 +62,31 @@
       </div>
 
       <div class="tb-right">
+        <span v-if="locked" class="locked-flag">已定稿 · 锁定</span>
         <span v-if="dirty" class="dirty-flag">未保存</span>
         <span class="count"><b>{{ filtered.length }}</b> / {{ relations.length }} 条</span>
+        <span class="why-hint">点行首 › 看「为什么抽出来」</span>
         <el-button
           :icon="RefreshLeft"
-          :disabled="!canUndo"
+          :disabled="locked || !canUndo"
           title="撤销上一步校正（Ctrl/⌘ + Z）"
           aria-label="撤销上一步校正"
           @click="emit('undo')"
         />
         <el-button
           :icon="RefreshRight"
-          :disabled="!canRedo"
+          :disabled="locked || !canRedo"
           title="重做校正（Ctrl/⌘ + Shift + Z）"
           aria-label="重做校正"
           @click="emit('redo')"
         />
-        <el-button :icon="Plus" @click="openAdd">新增</el-button>
+        <el-button :icon="Plus" :disabled="locked" @click="openAdd">新增</el-button>
         <el-button
           type="primary"
           :icon="Check"
           :loading="saving"
-          :disabled="!dirty || saving"
-          :title="recordId ? '保存校正到历史记录' : '保存为一条新的历史记录'"
+          :disabled="locked || !dirty || saving"
+          :title="locked ? '已定稿，请先在复核台解锁' : (recordId ? '保存校正到历史记录' : '保存为一条新的历史记录')"
           @click="emit('save')"
         >
           {{ recordId ? '保存校正' : '保存为新记录' }}
@@ -129,6 +131,58 @@
                   <b>{{ (row.confidence * 100).toFixed(0) }}%</b>
                 </span>
               </div>
+
+              <!-- 解释字段由后端统一生成：实时抽取、历史记录、离线报告口径一致。
+                   旧快照 / 人工录入没有命中路径，就明说没有，不编造。 -->
+              <div v-if="row.explanation" class="why">
+                <div class="why-head">
+                  <span class="why-title">为什么抽出来</span>
+                  <span class="why-strategy">{{ row.explanation.strategy }}</span>
+                  <span
+                    v-if="!row.explanation.confidence_parts?.exact"
+                    class="why-est"
+                    title="历史快照没有保存逐步分值，这里给出的是定性说明"
+                  >分值来自估算</span>
+                </div>
+                <p class="why-how">{{ row.explanation.strategy_how }}</p>
+                <dl class="why-grid">
+                  <div>
+                    <dt>命中词</dt>
+                    <dd>{{ row.explanation.matched }}</dd>
+                  </div>
+                  <div v-if="row.explanation.template">
+                    <dt>模板骨架</dt>
+                    <dd><code>{{ row.explanation.template }}</code></dd>
+                  </div>
+                  <div>
+                    <dt>类型约束</dt>
+                    <dd>{{ row.explanation.type_constraint }}</dd>
+                  </div>
+                  <div>
+                    <dt>证据句</dt>
+                    <dd>
+                      第
+                      {{ row.explanation.sentence_no ?? (hasSentenceIndex(row) ? row.sentence_index + 1 : '未指定') }}
+                      句
+                    </dd>
+                  </div>
+                </dl>
+                <p v-if="row.explanation.rule_description" class="why-rule">
+                  {{ row.explanation.rule_description }}
+                </p>
+                <p class="why-score">
+                  <span>置信度构成</span>
+                  <code>{{ row.explanation.confidence_parts?.formula || '—' }}</code>
+                </p>
+                <ol v-if="row.explanation.steps?.length" class="why-steps">
+                  <li v-for="(step, i) in row.explanation.steps" :key="i">{{ step }}</li>
+                </ol>
+              </div>
+              <p v-else class="why-fallback">
+                {{ row.rule_base === 'manual'
+                  ? '人工录入或改写，不经过规则引擎，因此没有自动命中路径。'
+                  : '这条来自旧快照，未保存命中路径；重新抽取一次即可生成解释。' }}
+              </p>
             </div>
           </template>
         </el-table-column>
@@ -144,6 +198,11 @@
           <template #default="{ row }">
             <span class="rel-pill" :style="pillStyle(row.relation)">{{ row.relation_label }}</span>
             <span v-if="row.rule_base === 'manual'" class="manual-tag">人工</span>
+            <span
+              v-if="reviewOf(row)"
+              :style="reviewMarkStyle(reviewOf(row))"
+              :title="`复核结论：${REVIEW_MARK[reviewOf(row)]}`"
+            >{{ REVIEW_MARK[reviewOf(row)] }}</span>
           </template>
         </el-table-column>
 
@@ -189,7 +248,7 @@
               >
                 原文
               </button>
-              <el-button link size="small" @click="openEdit(row)">编辑</el-button>
+              <el-button link size="small" :disabled="locked" @click="openEdit(row)">编辑</el-button>
               <el-popconfirm
                 title="删除这条三元组？"
                 confirm-button-text="删除"
@@ -197,7 +256,7 @@
                 @confirm="remove(row)"
               >
                 <template #reference>
-                  <el-button link size="small" class="r-del">删除</el-button>
+                  <el-button link size="small" class="r-del" :disabled="locked">删除</el-button>
                 </template>
               </el-popconfirm>
             </div>
@@ -282,8 +341,7 @@ import {
   RefreshRight,
   Search,
 } from '@element-plus/icons-vue'
-import { canonicalize, hasSentenceIndex, normalizeSentenceIndex } from '../utils/entities'
-import { ruleLabel } from '../utils/labels'
+import { hasSentenceIndex, normalizeSentenceIndex } from '../utils/entities'
 
 const props = defineProps({
   relations: { type: Array, default: () => [] },
@@ -295,11 +353,44 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   canUndo: { type: Boolean, default: false },
   canRedo: { type: Boolean, default: false },
+  reviewMap: { type: Object, default: () => ({}) },
+  locked: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
   'locate', 'clear-filter', 'update:relations', 'save', 'snapshot', 'undo', 'redo',
 ])
+
+/* 复核结论由后端按「归一实体 + 关系 + 尾实体 + 句序」算指纹，前端用同一
+   规则拼可读 key 查表，不必在浏览器里复刻 sha256。 */
+const REVIEW_MARK = { approved: '通过', questioned: '存疑', rejected: '驳回' }
+const REVIEW_COLORS = {
+  approved: { color: '#2f6b3a', background: '#e6f2e6', borderColor: '#9bc9a4' },
+  questioned: { color: '#8a5a10', background: '#fdf0d5', borderColor: '#e0bd77' },
+  rejected: { color: '#a8322a', background: '#f7e2e0', borderColor: '#e4aca7' },
+}
+
+function reviewOf(row) {
+  const key = [
+    row.head_canonical || row.head,
+    row.relation,
+    row.tail_canonical || row.tail,
+    row.sentence_index ?? 0,
+  ].join('|')
+  return props.reviewMap?.[key] || ''
+}
+
+function reviewMarkStyle(decision) {
+  return {
+    display: 'inline-block',
+    marginLeft: '4px',
+    padding: '0 4px',
+    borderRadius: '3px',
+    fontSize: '10px',
+    border: '1px solid transparent',
+    ...REVIEW_COLORS[decision],
+  }
+}
 
 /* 撤销 / 重做只在三元组页生效；输入框里仍然交给浏览器原生撤销。 */
 function onHistoryKeydown(event) {
@@ -367,6 +458,19 @@ function emptyForm() {
 const dialogOpen = ref(false)
 const editingIndex = ref(null)
 const form = ref(emptyForm())
+
+const ORG_SUFFIXES = ['股份有限公司', '有限责任公司', '有限公司', '集团公司', '集团', '控股', '公司']
+
+/** 与后端 canonical_name 保持一致，保存前导出的 CSV 也使用规范化名。 */
+function canonicalize(text, type) {
+  if (type !== 'ORG') return text
+  let result = text
+  for (;;) {
+    const suffix = ORG_SUFFIXES.find((s) => result.endsWith(s) && result.length - s.length >= 2)
+    if (!suffix) return result
+    result = result.slice(0, -suffix.length)
+  }
+}
 
 function shortText(text) {
   const value = String(text || '').replace(/\s+/g, ' ').trim()
@@ -505,6 +609,22 @@ function confColor(v) {
   return '#6b7280'
 }
 
+const RULE_LABEL = {
+  pattern: '句式模板',
+  trigger: '触发词',
+  passive: '被动句',
+  conjunction: '并列结构',
+  postmodifier: '后置定语',
+  attributive: '职位线索',
+  coref: '指代消解',
+  chain: '主语链',
+  manual: '人工校正',
+}
+
+function ruleLabel(base) {
+  return RULE_LABEL[base] || base || '—'
+}
+
 function exportCsv() {
   if (!filtered.value.length) {
     ElMessage.warning('当前没有可导出的三元组')
@@ -641,6 +761,15 @@ function exportCsv() {
   color: #b45309;
   background: #fef3c7;
   border: 1px solid #fcd34d;
+  border-radius: var(--r-xs);
+  padding: 1px 6px;
+}
+
+.locked-flag {
+  font-size: 10.5px;
+  color: #8f2a23;
+  background: #f7e9e7;
+  border: 1px solid #e4aca7;
   border-radius: var(--r-xs);
   padding: 1px 6px;
 }
@@ -856,17 +985,6 @@ function exportCsv() {
   color: #8f2a23;
 }
 
-.locate-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
-.locate-btn:disabled:hover {
-  background: var(--surface);
-  border-color: var(--line-strong);
-  color: var(--ink-2);
-}
-
 /* ---------- 展开区 ---------- */
 .evidence-block {
   padding: 12px 16px 13px 46px;
@@ -906,6 +1024,141 @@ function exportCsv() {
   font-weight: 500;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
+}
+
+.why-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ---------- 为什么抽出来 ----------
+   解释是校对稿的「批注层」：只用色阶与朱红小标分层，不加第二套卡片描边。 */
+.why {
+  margin-top: 12px;
+  padding: 10px 12px 11px;
+  border-left: 2px solid var(--brand-red);
+  background: var(--surface);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+}
+
+.why-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.why-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.2px;
+}
+
+.why-strategy {
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  font-size: 10.5px;
+  color: var(--brand-red);
+  background: var(--brand-red-soft);
+}
+
+.why-est {
+  font-size: 10.5px;
+  color: var(--warn);
+}
+
+.why-how {
+  margin: 7px 0 0;
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--ink-2);
+}
+
+.why-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 6px 16px;
+  margin: 10px 0 0;
+}
+
+.why-grid > div {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+
+.why-grid dt {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.why-grid dd {
+  margin: 0;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.why-grid code,
+.why-score code {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--ink);
+  background: var(--surface-3);
+  padding: 1px 5px;
+  border-radius: var(--r-xs);
+}
+
+.why-rule {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.why-score {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 9px 0 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.why-score code {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+
+.why-steps {
+  margin: 9px 0 0;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.75;
+  color: var(--ink-2);
+}
+
+.why-fallback {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (max-width: 1080px) {
+  .why-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .evidence-block {
+    padding-left: 16px;
+  }
 }
 
 /* ---------- 新增 / 编辑弹窗 ---------- */

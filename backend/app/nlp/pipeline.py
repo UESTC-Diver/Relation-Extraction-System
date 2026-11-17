@@ -3,15 +3,23 @@
 
 from __future__ import annotations
 
+import threading
 import time
 
 from .entity import Entity, EntityRecognizer
+from .explanation import attach as attach_explanations
 from .lexicon import ENTITY_TYPE_ORDER, ENTITY_TYPES, apply_custom_triggers
 from .relation import RelationExtractor
 from .tokenizer import split_sentences, warmup
 
 _recognizer: EntityRecognizer | None = None
 _extractor: RelationExtractor | None = None
+
+# apply_custom_triggers 原地改写全局触发词索引。领域包让不同请求可能带不同
+# 配置，两次 analyze 若不串行，A 的索引会被 B 覆盖，抽出错误结果。
+# 同一配置下 apply 是签名相同的 O(1) 空操作，锁的开销可忽略；
+# quality.py 的 A/B 试跑也复用这把锁，确保 before / after 之间不被插入。
+analysis_lock = threading.RLock()
 
 
 def _engines() -> tuple[EntityRecognizer, RelationExtractor]:
@@ -39,15 +47,16 @@ def analyze(
     if not text:
         return _empty_result(text, 0.0)
 
-    # 自定义触发词按签名增量同步，同一套配置下是常数级空操作
-    apply_custom_triggers(custom_triggers)
-    recognizer, extractor = _engines()
-    sentences = split_sentences(text)
-    entities = recognizer.recognize(text, sentences, custom_terms=custom_terms)
-    for i, e in enumerate(entities, start=1):
-        e.id = f"e{i}"
-
-    triples = extractor.extract(sentences, entities)
+    # 自定义触发词按签名增量同步，同一套配置下是常数级空操作。
+    # 索引是全局的，配置→抽取必须在同一把锁内完成，否则领域包并发会串味。
+    with analysis_lock:
+        apply_custom_triggers(custom_triggers)
+        recognizer, extractor = _engines()
+        sentences = split_sentences(text)
+        entities = recognizer.recognize(text, sentences, custom_terms=custom_terms)
+        for i, e in enumerate(entities, start=1):
+            e.id = f"e{i}"
+        triples = extractor.extract(sentences, entities)
     relations = []
     for i, t in enumerate(triples, start=1):
         item = t.as_dict()
@@ -63,7 +72,7 @@ def analyze(
         relation_type_counts[r["relation"]] = relation_type_counts.get(r["relation"], 0) + 1
 
     elapsed = (time.perf_counter() - started) * 1000
-    return {
+    return attach_explanations({
         "text": text,
         "sentences": [
             {"index": s.index, "start": s.start, "end": s.end, "text": s.text}
@@ -81,7 +90,7 @@ def analyze(
             "unique_entity_count": len({e.text for e in entities}),
             "elapsed_ms": round(elapsed, 1),
         },
-    }
+    })
 
 
 def highlight_spans(entities: list[Entity]) -> list[dict]:

@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS records (
     title         TEXT    NOT NULL DEFAULT '',
     text          TEXT    NOT NULL,
     source        TEXT    NOT NULL DEFAULT 'text',
+    profile       TEXT    NOT NULL DEFAULT 'general',
     char_count    INTEGER NOT NULL DEFAULT 0,
     sentence_count INTEGER NOT NULL DEFAULT 0,
     entity_count  INTEGER NOT NULL DEFAULT 0,
@@ -88,11 +89,163 @@ CREATE TABLE IF NOT EXISTS counters (
     sum_ms    REAL    NOT NULL DEFAULT 0
 );
 INSERT OR IGNORE INTO counters (id) VALUES (1);
+
+-- 界面化评测的历史结果：每次跑 P/R/F1 留一条，用于回归曲线
+CREATE TABLE IF NOT EXISTS eval_runs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at  TEXT    NOT NULL,
+    cases       INTEGER NOT NULL DEFAULT 0,
+    tp          INTEGER NOT NULL DEFAULT 0,
+    fp          INTEGER NOT NULL DEFAULT 0,
+    fn          INTEGER NOT NULL DEFAULT 0,
+    precision   REAL    NOT NULL DEFAULT 0,
+    recall      REAL    NOT NULL DEFAULT 0,
+    f1          REAL    NOT NULL DEFAULT 0,
+    macro_f1    REAL    NOT NULL DEFAULT 0,
+    dataset     TEXT    NOT NULL DEFAULT 'builtin',
+    coverage    REAL    NOT NULL DEFAULT 1.0,
+    report_json TEXT    NOT NULL DEFAULT '{}'
+);
+
+-- 规则实验室的配置快照：自定义触发词 + 实体词条，可一键回滚
+CREATE TABLE IF NOT EXISTS rule_versions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    created_at TEXT    NOT NULL,
+    rules_json TEXT    NOT NULL DEFAULT '[]',
+    terms_json TEXT    NOT NULL DEFAULT '[]'
+);
+
+-- 实体级校正痕迹：只记改动，不覆盖原始抽取快照的语义
+CREATE TABLE IF NOT EXISTS entity_corrections (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id   INTEGER NOT NULL,
+    original    TEXT    NOT NULL,
+    corrected   TEXT    NOT NULL,
+    entity_type TEXT    NOT NULL DEFAULT '',
+    created_at  TEXT    NOT NULL
+);
+
+-- 后台任务：批量抽取等长任务提交后立即返回 id，前端轮询进度
+CREATE TABLE IF NOT EXISTS tasks (
+    id          TEXT PRIMARY KEY,
+    kind        TEXT NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'pending',
+    done        INTEGER NOT NULL DEFAULT 0,
+    total       INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    result_json TEXT NOT NULL DEFAULT '{}',
+    error       TEXT NOT NULL DEFAULT ''
+);
+
+-- 复核闭环：逐条三元组的人工结论与批注
+CREATE TABLE IF NOT EXISTS review_decisions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id    INTEGER NOT NULL,
+    relation_key TEXT    NOT NULL,
+    decision     TEXT    NOT NULL,
+    note         TEXT    NOT NULL DEFAULT '',
+    reviewer     TEXT    NOT NULL DEFAULT '',
+    updated_at   TEXT    NOT NULL,
+    UNIQUE (record_id, relation_key)
+);
+CREATE INDEX IF NOT EXISTS idx_review_record ON review_decisions (record_id);
+
+-- 定稿快照：final 之后三元组与结论的不可变副本
+CREATE TABLE IF NOT EXISTS review_snapshots (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id      INTEGER NOT NULL,
+    created_at     TEXT    NOT NULL,
+    title          TEXT    NOT NULL DEFAULT '',
+    relations_json TEXT    NOT NULL DEFAULT '[]',
+    entities_json  TEXT    NOT NULL DEFAULT '[]',
+    decisions_json TEXT    NOT NULL DEFAULT '[]'
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_record ON review_snapshots (record_id);
+
+-- 规则体检：人工校正中被删掉的关系留痕，用来统计「哪类关系最常被否掉」。
+-- 不覆盖原始抽取快照，只在保存校正时追加，删库同步清理。
+CREATE TABLE IF NOT EXISTS relation_deletions (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id      INTEGER NOT NULL,
+    relation       TEXT    NOT NULL,
+    relation_label TEXT    NOT NULL DEFAULT '',
+    head           TEXT    NOT NULL DEFAULT '',
+    tail           TEXT    NOT NULL DEFAULT '',
+    rule_base      TEXT    NOT NULL DEFAULT '',
+    created_at     TEXT    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_deletions_relation ON relation_deletions (relation);
+
+-- 金标准标注：把「这套规则准不准」从内置集的演示数字，变成能在自己的材料上
+-- 复现的结论。一个标注集对应一批材料（现实里就是一个案卷），标注本身挂在
+-- 记录上而不是集上——同一份材料被多个案卷复用时，不该重复标第二遍。
+CREATE TABLE IF NOT EXISTS annotation_sets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    note       TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS annotation_set_records (
+    set_id    INTEGER NOT NULL,
+    record_id INTEGER NOT NULL,
+    PRIMARY KEY (set_id, record_id)
+);
+
+-- 一条标注 = 对「某个头实体 + 某类关系 + 某个尾实体」的判断。
+-- 没有行就是未判：不用 pending 值，避免「判过但选了未判」与「从没判过」混淆。
+-- origin=manual 表示系统没抽出来、由人补录，它和自动命中项在 gold 里同权。
+CREATE TABLE IF NOT EXISTS annotations (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id      INTEGER NOT NULL,
+    relation_key   TEXT    NOT NULL,
+    verdict        TEXT    NOT NULL,
+    origin         TEXT    NOT NULL DEFAULT 'auto',
+    source         TEXT    NOT NULL DEFAULT 'human',
+    head           TEXT    NOT NULL DEFAULT '',
+    relation       TEXT    NOT NULL,
+    tail           TEXT    NOT NULL DEFAULT '',
+    sentence_index INTEGER NOT NULL DEFAULT -1,
+    evidence       TEXT    NOT NULL DEFAULT '',
+    note           TEXT    NOT NULL DEFAULT '',
+    created_at     TEXT    NOT NULL,
+    UNIQUE (record_id, relation_key)
+);
+CREATE INDEX IF NOT EXISTS idx_annotations_record ON annotations (record_id);
+CREATE INDEX IF NOT EXISTS idx_annotations_verdict ON annotations (verdict);
+
+-- 案卷：一份尽调档案 = 一个标的 + 一批材料。
+-- 案卷只做「材料归档与视图聚合」，不复制材料内容：同一份记录被多个案卷
+-- 引用时，抽取结果、校正、复核结论始终只有一份。
+CREATE TABLE IF NOT EXISTS dossiers (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT    NOT NULL,
+    subject      TEXT    NOT NULL DEFAULT '',
+    subject_type TEXT    NOT NULL DEFAULT 'ORG',
+    note         TEXT    NOT NULL DEFAULT '',
+    created_at   TEXT    NOT NULL,
+    updated_at   TEXT    NOT NULL
+);
+
+-- role 是材料在案卷里的身份（工商登记 / 股权转让 / 裁判文书 / 新闻稿 …），
+-- 它不改变抽取结果，只决定案卷视图里的分组、报告小标题与证据权重提示。
+CREATE TABLE IF NOT EXISTS dossier_records (
+    dossier_id INTEGER NOT NULL,
+    record_id  INTEGER NOT NULL,
+    role       TEXT    NOT NULL DEFAULT '其他材料',
+    added_at   TEXT    NOT NULL,
+    PRIMARY KEY (dossier_id, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dossier_records_record ON dossier_records (record_id);
 """
 
 # 依赖归一化字段的索引，必须在 _migrate 补列之后才能创建
 INDEX_AFTER_MIGRATE = """
 CREATE INDEX IF NOT EXISTS idx_relations_head ON relations (head_canonical);
+CREATE INDEX IF NOT EXISTS idx_relations_confidence ON relations (confidence);
+CREATE INDEX IF NOT EXISTS idx_relations_record_conf ON relations (record_id, confidence);
 """
 
 
@@ -289,6 +442,28 @@ def _migrate(conn: sqlite3.Connection) -> None:
             "ALTER TABLE relations ADD COLUMN rule_base TEXT NOT NULL DEFAULT 'trigger'"
         )
 
+    # 知识库化：记录标签用逗号分隔字符串存，避免为多对多关系再加一张表。
+    # 旧库补列后默认空串，已有记录内容一个字节都不动。
+    record_cols = {row["name"] for row in conn.execute("PRAGMA table_info(records)")}
+    if "tags" not in record_cols:
+        conn.execute("ALTER TABLE records ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
+    if "review_status" not in record_cols:
+        conn.execute(
+            "ALTER TABLE records ADD COLUMN review_status TEXT NOT NULL DEFAULT 'draft'"
+        )
+    # 领域包记录在抽取当时用的那一份，历史记录与离线报告才能说明「用什么抽的」。
+    if "profile" not in record_cols:
+        conn.execute("ALTER TABLE records ADD COLUMN profile TEXT NOT NULL DEFAULT 'general'")
+
+    # 评测历史要能区分「内置集」与「自己的标注集」，否则两条曲线混在一张图上
+    # 完全没有可比性；coverage 记下当时标注完整度，避免拿 30% 标注的成绩
+    # 和 100% 标注的成绩直接比高低。
+    eval_cols = {row["name"] for row in conn.execute("PRAGMA table_info(eval_runs)")}
+    if "dataset" not in eval_cols:
+        conn.execute("ALTER TABLE eval_runs ADD COLUMN dataset TEXT NOT NULL DEFAULT 'builtin'")
+    if "coverage" not in eval_cols:
+        conn.execute("ALTER TABLE eval_runs ADD COLUMN coverage REAL NOT NULL DEFAULT 1.0")
+
 
 def init_db() -> None:
     with connect() as conn:
@@ -341,8 +516,10 @@ def save_record(
     source: str = "text",
     title: str = "",
     store_relations: bool = True,
+    profile: str = "",
 ) -> int:
     stats = result.get("stats", {})
+    profile_key = profile or result.get("profile") or "general"
     entities = result.get("entities", [])
     relations = result.get("relations", [])
     if not title:
@@ -350,15 +527,16 @@ def save_record(
     with connect() as conn:
         cur = conn.execute(
             """
-            INSERT INTO records (title, text, source, char_count, sentence_count,
+            INSERT INTO records (title, text, source, profile, char_count, sentence_count,
                                  entity_count, relation_count, entity_types,
                                  entities_json, elapsed_ms, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 title,
                 result.get("text", ""),
                 source,
+                profile_key,
                 stats.get("char_count", 0),
                 stats.get("sentence_count", 0),
                 stats.get("entity_count", 0),
@@ -383,50 +561,80 @@ def save_record(
     return record_id
 
 
+def _split_tags(raw: str | None) -> list[str]:
+    return [t.strip() for t in (raw or "").split(",") if t.strip()]
+
+
 def _record_row(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": row["id"],
         "title": row["title"],
         "text": row["text"],
         "source": row["source"],
+        "profile": row["profile"] if "profile" in row.keys() else "general",
         "char_count": row["char_count"],
         "sentence_count": row["sentence_count"],
         "entity_count": row["entity_count"],
         "relation_count": row["relation_count"],
         "elapsed_ms": row["elapsed_ms"],
         "created_at": row["created_at"],
+        "tags": _split_tags(row["tags"]) if "tags" in row.keys() else [],
+        "review_status": row["review_status"] if "review_status" in row.keys() else "draft",
     }
 
 
-def list_records(limit: int = 20, offset: int = 0, keyword: str = "") -> dict[str, Any]:
-    where, params = "", []
+def _list_record_rows(conn, clauses: list[str], params: list, limit: int, offset: int):
+    where = "WHERE " + " AND ".join(clauses) if clauses else ""
+    total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
+    # 只取列表要用的列：text 与 entities_json 可能各有上万字，
+    # SELECT * 会把它们白白读进内存再丢掉。
+    rows = conn.execute(
+        f"""SELECT id, title, substr(text, 1, 200) AS text, source, tags,
+                   review_status, profile, char_count, sentence_count,
+                   entity_count, relation_count, elapsed_ms, created_at
+            FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
+        [*params, limit, offset],
+    ).fetchall()
+    return total, rows
+
+
+def list_records(
+    limit: int = 20, offset: int = 0, keyword: str = "", tag: str = ""
+) -> dict[str, Any]:
+    clauses: list[str] = []
+    params: list = []
+    used_fts = False
     if keyword:
         # 优先走 trigram 全文索引；短词或不支持 FTS5 的环境退回 LIKE。
         fts = _fts_where(keyword)
-        where, params = fts or ("WHERE text LIKE ? OR title LIKE ?", [f"%{keyword}%", f"%{keyword}%"])
+        if fts:
+            clause, fts_params = fts
+            clauses.append(clause[6:])  # 去掉开头的 "WHERE "
+            params.extend(fts_params)
+            used_fts = True
+        else:
+            clauses.append("(text LIKE ? OR title LIKE ?)")
+            params.extend([f"%{keyword}%", f"%{keyword}%"])
+    if tag:
+        # 逗号包裹后精确匹配整个标签，避免 "AI" 命中 "AI医疗"
+        clauses.append("instr(',' || tags || ',', ',' || ? || ',') > 0")
+        params.append(tag.strip())
+
     with connect() as conn:
         try:
-            total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
-            # 只取列表要用的列：text 与 entities_json 可能各有上万字，
-            # SELECT * 会把它们白白读进内存再丢掉。
-            rows = conn.execute(
-                f"""SELECT id, title, substr(text, 1, 200) AS text, source,
-                           char_count, sentence_count, entity_count, relation_count,
-                           elapsed_ms, created_at
-                    FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
-                [*params, limit, offset],
-            ).fetchall()
+            total, rows = _list_record_rows(conn, clauses, params, limit, offset)
         except sqlite3.Error:
+            if not used_fts:
+                raise
             # MATCH 语法意外报错时不能让搜索整个挂掉，退回最保守的 LIKE
-            where, params = "WHERE text LIKE ? OR title LIKE ?", [f"%{keyword}%", f"%{keyword}%"]
-            total = conn.execute(f"SELECT COUNT(*) AS c FROM records {where}", params).fetchone()["c"]
-            rows = conn.execute(
-                f"""SELECT id, title, substr(text, 1, 200) AS text, source,
-                           char_count, sentence_count, entity_count, relation_count,
-                           elapsed_ms, created_at
-                    FROM records {where} ORDER BY id DESC LIMIT ? OFFSET ?""",
-                [*params, limit, offset],
-            ).fetchall()
+            clauses, params = [], []
+            if keyword:
+                clauses.append("(text LIKE ? OR title LIKE ?)")
+                params.extend([f"%{keyword}%", f"%{keyword}%"])
+            if tag:
+                clauses.append("instr(',' || tags || ',', ',' || ? || ',') > 0")
+                params.append(tag.strip())
+            total, rows = _list_record_rows(conn, clauses, params, limit, offset)
     return {"total": total, "items": [_record_row(r) for r in rows]}
 
 
@@ -439,10 +647,16 @@ def get_record(record_id: int) -> dict[str, Any] | None:
             "SELECT * FROM relations WHERE record_id = ? ORDER BY confidence DESC, id ASC",
             (record_id,),
         ).fetchall()
+    # 解释字段按同一份纯函数重建：SQLite 只存结果字段，不存逐步分值。
+    from .nlp.explanation import attach as attach_explanations
+
     data = _record_row(row)
+    from .nlp.profiles import get as get_profile
+
+    data["profile_label"] = get_profile(data.get("profile"))["label"]
     data["entities"] = json.loads(row["entities_json"] or "[]")
     data["entity_type_counts"] = json.loads(row["entity_types"] or "{}")
-    data["relations"] = [
+    data["relations"] = attach_explanations({"relations": [
         {
             "id": f"r{r['id']}",
             "head": r["head"],
@@ -460,7 +674,7 @@ def get_record(record_id: int) -> dict[str, Any] | None:
             "rule_base": r["rule_base"] or "trigger",
         }
         for r in rels
-    ]
+    ]})["relations"]
     return data
 
 
@@ -471,45 +685,87 @@ def replace_relations(
 ) -> bool:
     """用人工校正后的三元组整体替换某条历史记录的关系，并同步计数。
 
-    entities 不为 None 时一并更新实体快照，保证记录列表里的实体数与
-    PUT 之后的实际实体清单一致。
+    entities 传了就一并回写实体快照、类型分布与 entity_count —— 人工新增
+    关系可能带进原文里没有的实体，记录详情必须与三元组保持一致；不传则
+    保持原来的实体快照不动，兼容只改关系的旧调用。
     """
+    clean_entities: list[dict[str, Any]] | None = None
+    if entities is not None:
+        clean_entities = []
+        for raw in entities:
+            if not isinstance(raw, dict):
+                continue
+            text = str(raw.get("text") or "").strip()
+            if not text:
+                continue
+            item = dict(raw)
+            item["text"] = text[:64]
+            clean_entities.append(item)
+
     with connect() as conn:
-        totals = _record_totals(conn, record_id)
-        if not totals:
+        exists = conn.execute(
+            "SELECT relation_count, entity_count FROM records WHERE id = ?", (record_id,)
+        ).fetchone()
+        if not exists:
             return False
-        old_entities = int(totals["entity_count"] or 0)
-        old_relations = int(totals["relation_count"] or 0)
+        previous = int(exists["relation_count"] or 0)
+        previous_entities = int(exists["entity_count"] or 0)
+        # 规则体检：把人工删掉的自动抽取关系记下来，按关系类型汇总成改进建议。
+        # 只记 rule_base != manual，人工新增行被撤销不算「规则误抽」。
+        old_rows = conn.execute(
+            """SELECT head, tail, relation, relation_label, rule_base
+               FROM relations WHERE record_id = ? AND rule_base != 'manual'""",
+            (record_id,),
+        ).fetchall()
+        kept = {
+            (str(r.get("head", "")), str(r.get("relation", "")), str(r.get("tail", "")))
+            for r in relations
+        }
+        dropped = [
+            (
+                record_id, old["relation"], old["relation_label"],
+                old["head"], old["tail"], old["rule_base"], _now(),
+            )
+            for old in old_rows
+            if (old["head"], old["relation"], old["tail"]) not in kept
+        ]
+        if dropped:
+            conn.executemany(
+                """INSERT INTO relation_deletions
+                   (record_id, relation, relation_label, head, tail, rule_base, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                dropped,
+            )
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
         _insert_relations(conn, record_id, relations)
 
-        new_entities = old_entities if entities is None else len(entities)
-        if entities is None:
+        entity_delta = 0
+        if clean_entities is None:
             conn.execute(
                 "UPDATE records SET relation_count = ? WHERE id = ?",
                 (len(relations), record_id),
             )
         else:
             counts: dict[str, int] = {}
-            for e in entities:
-                etype = e.get("type")
-                if etype:
-                    counts[etype] = counts.get(etype, 0) + 1
+            for item in clean_entities:
+                key = str(item.get("type") or "")
+                counts[key] = counts.get(key, 0) + 1
             conn.execute(
-                "UPDATE records SET relation_count = ?, entity_count = ?, "
-                "entities_json = ?, entity_types = ? WHERE id = ?",
+                """UPDATE records SET relation_count = ?, entity_count = ?,
+                                      entities_json = ?, entity_types = ? WHERE id = ?""",
                 (
                     len(relations),
-                    len(entities),
-                    json.dumps(entities, ensure_ascii=False),
+                    len(clean_entities),
+                    json.dumps(clean_entities, ensure_ascii=False),
                     json.dumps(counts, ensure_ascii=False),
                     record_id,
                 ),
             )
+            entity_delta = len(clean_entities) - previous_entities
         _bump_counters(
             conn,
-            entities=new_entities - old_entities,
-            relations=len(relations) - old_relations,
+            relations=len(relations) - previous,
+            entities=entity_delta,
         )
     return True
 
@@ -518,6 +774,13 @@ def delete_record(record_id: int) -> bool:
     with connect() as conn:
         totals = _record_totals(conn, record_id)
         conn.execute("DELETE FROM relations WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM review_decisions WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM review_snapshots WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM relation_deletions WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM annotations WHERE record_id = ?", (record_id,))
+        conn.execute("DELETE FROM annotation_set_records WHERE record_id = ?", (record_id,))
+        # 材料被删，案卷本身保留：只把这份材料从案卷的归档清单里摘掉
+        conn.execute("DELETE FROM dossier_records WHERE record_id = ?", (record_id,))
         cur = conn.execute("DELETE FROM records WHERE id = ?", (record_id,))
         if cur.rowcount > 0 and totals:
             _bump_counters(
@@ -534,6 +797,14 @@ def delete_record(record_id: int) -> bool:
 def clear_records() -> int:
     with connect() as conn:
         conn.execute("DELETE FROM relations")
+        conn.execute("DELETE FROM review_decisions")
+        conn.execute("DELETE FROM review_snapshots")
+        conn.execute("DELETE FROM relation_deletions")
+        conn.execute("DELETE FROM annotations")
+        conn.execute("DELETE FROM annotation_set_records")
+        # 清空历史 = 所有材料都没了，案卷壳留着没意义，一并清掉
+        conn.execute("DELETE FROM dossier_records")
+        conn.execute("DELETE FROM dossiers")
         cur = conn.execute("DELETE FROM records")
         conn.execute(
             """UPDATE counters SET records = 0, chars = 0, entities = 0,

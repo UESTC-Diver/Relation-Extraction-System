@@ -2,8 +2,8 @@
   <div class="workbench">
     <div class="wb-head">
       <div class="panel-title">
-        文本输入
-        <small>粘贴中文新闻，或上传 .txt</small>
+        <span class="wb-title-label">文本输入</span>
+        <small>粘贴中文新闻，或上传 .txt / .pdf / .docx</small>
       </div>
       <div class="wb-head-right">
         <span class="wb-count" :class="{ 'is-warn': charCount > 18000 }">
@@ -34,6 +34,20 @@
       </button>
     </div>
 
+    <div class="wb-profile">
+      <label class="wb-label" for="wb-profile-select">领域包</label>
+      <select
+        id="wb-profile-select"
+        class="wb-profile-select"
+        :value="profileValue"
+        aria-label="选择领域包"
+        @change="emit('update:profileValue', $event.target.value)"
+      >
+        <option v-for="p in profiles" :key="p.key" :value="p.key">{{ p.label }}</option>
+      </select>
+      <span class="wb-profile-note">{{ activeProfile?.description || '默认规则配置' }}</span>
+    </div>
+
     <el-input
       v-model="text"
       class="wb-textarea"
@@ -58,7 +72,7 @@
       />
 
       <div class="wb-actions">
-        <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text">
+        <el-upload :auto-upload="false" :show-file-list="false" :on-change="onFile" accept=".txt,.md,.text,.pdf,.docx">
           <el-button class="wb-upload" :icon="Upload">上传</el-button>
         </el-upload>
         <el-button :icon="Collection" @click="dictOpen = true">词典</el-button>
@@ -132,14 +146,22 @@ const props = defineProps({
   titleValue: { type: String, default: '' },
   samples: { type: Array, default: () => [] },
   schema: { type: Object, default: () => ({}) },
+  profiles: { type: Array, default: () => [] },
+  profileValue: { type: String, default: 'general' },
   loading: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['update:modelValue', 'update:titleValue', 'run', 'file', 'clear'])
+const emit = defineEmits([
+  'update:modelValue', 'update:titleValue', 'update:profileValue', 'run', 'file', 'clear',
+])
 
 const opened = ref([])
 const activeSample = ref('')
 const dictOpen = ref(false)
+
+const activeProfile = computed(
+  () => props.profiles.find((p) => p.key === props.profileValue) || null,
+)
 
 const text = computed({
   get: () => props.modelValue,
@@ -163,9 +185,9 @@ function applySample(sample) {
 function onFile(uploadFile) {
   const file = uploadFile?.raw
   if (!file) return
-  const isText = /\.(txt|md|text)$/i.test(file.name)
+  const isText = /\.(txt|md|text|pdf|docx)$/i.test(file.name)
   if (!isText) {
-    ElMessage.error('仅支持 .txt / .md 文本文件')
+    ElMessage.error('仅支持 .txt / .md / .text / .pdf / .docx 文件')
     return
   }
   if (file.size > 2 * 1024 * 1024) {
@@ -209,6 +231,19 @@ function submit() {
   justify-content: space-between;
   gap: 10px;
   min-height: 22px;
+  min-width: 0;
+}
+
+/* 左栏宽度由栅格分配，不等于视口宽度：标题不参与收缩，说明文字单独截断。
+   否则中栏一窄，「文本输入」会被压成两行。 */
+.wb-head .wb-title-label {
+  flex: none;
+  white-space: nowrap;
+}
+
+.wb-head .panel-title small {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .wb-head-right {
@@ -275,6 +310,45 @@ function submit() {
   font-size: 11.5px;
   color: var(--muted);
   margin-right: 3px;
+}
+
+/* 领域包：一行原生控件，不引组件库下拉，避免窄屏多一层浮层 */
+.wb-profile {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 0 9px;
+}
+
+.wb-profile-select {
+  flex: none;
+  height: 26px;
+  padding: 0 24px 0 8px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-press) var(--ease);
+}
+
+.wb-profile-select:hover,
+.wb-profile-select:focus-visible {
+  border-color: var(--brand-red);
+  outline: none;
+}
+
+.wb-profile-note {
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .sample-chip {

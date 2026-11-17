@@ -28,7 +28,10 @@ class SnapshotRequest(BaseModel):
 
 class RelationsReplaceRequest(BaseModel):
     relations: list[dict] = Field(default_factory=list)
-    entities: list[dict] | None = None
+    entities: list[dict] | None = Field(
+        default=None,
+        description="可选：人工新增关系时补入的实体，随三元组一起写回记录快照",
+    )
 
 
 def _normalize_relations(
@@ -54,17 +57,13 @@ def _normalize_relations(
             confidence = float(item.get("confidence", 1.0))
         except (TypeError, ValueError):
             confidence = 1.0
-        # -1 表示人工新增时没有指定证据句；0 是合法的第一句，不能混用
-        raw_index = item.get("sentence_index")
-        if raw_index is None:
-            sentence_index = -1
-        else:
-            try:
-                sentence_index = int(raw_index)
-            except (TypeError, ValueError):
-                sentence_index = -1
-            if sentence_index < 0:
-                sentence_index = -1
+        # 显式 null 表示「不指向具体证据句」，落库为 -1；缺省仍是 0（第 0 句）。
+        # 人工新增的关系往往没有原文出处，不能悄悄指到第一句上。
+        raw_index = item.get("sentence_index", 0)
+        try:
+            sentence_index = -1 if raw_index is None else max(-1, int(raw_index))
+        except (TypeError, ValueError):
+            sentence_index = 0
         out.append(
             {
                 "head": head[:64],
@@ -90,8 +89,11 @@ def records(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     keyword: str = Query(default=""),
+    tag: str = Query(default="", description="按知识库标签精确筛选"),
 ) -> dict:
-    return db.list_records(limit=limit, offset=offset, keyword=keyword.strip())
+    return db.list_records(
+        limit=limit, offset=offset, keyword=keyword.strip(), tag=tag.strip()
+    )
 
 
 @router.get("/records/{record_id}", summary="单条历史记录详情")
@@ -124,8 +126,11 @@ def record_save(payload: SnapshotRequest) -> dict:
 
 @router.put("/records/{record_id}/relations", summary="保存人工校正的三元组")
 def record_relations_replace(record_id: int, payload: RelationsReplaceRequest) -> dict:
-    if not db.get_record(record_id):
+    record = db.get_record(record_id)
+    if not record:
         raise HTTPException(status_code=404, detail="记录不存在")
+    if record.get("review_status") == "final":
+        raise HTTPException(status_code=409, detail="记录已定稿，请先在复核台解锁后再修改")
     relations = _normalize_relations(payload.relations, default_base="manual")
     db.replace_relations(record_id, relations, entities=payload.entities)
     return db.get_record(record_id)
@@ -153,10 +158,16 @@ def samples() -> list[dict]:
     return SAMPLES
 
 
-@router.get("/schema", summary="实体类型与关系类型目录")
+@router.get("/schema", summary="实体类型、关系类型与领域包目录")
 def schema() -> dict:
+    from ..dossier import MATERIAL_ROLES
+    from ..nlp.profiles import DEFAULT_PROFILE, catalog
+
     return {
         "entity_types": entity_catalog(),
         "relation_types": relation_catalog(),
         "relation_count": len(RELATION_RULES),
+        "profiles": catalog(),
+        "default_profile": DEFAULT_PROFILE,
+        "material_roles": MATERIAL_ROLES,
     }

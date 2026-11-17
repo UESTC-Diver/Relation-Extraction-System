@@ -620,8 +620,22 @@ body.lp-active #app { height: auto; min-height: 100%; }
 }
 
 @media (max-width: 720px) {
+  /* 顶栏右侧新增「知识库 / 更多」后总宽超过窄屏，必须自己换行；
+     指标与分隔线在小屏让位给操作，按钮保持 44px 触摸目标。 */
   .appbar-right {
-    gap: var(--sp-4);
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    width: 100%;
+  }
+  .appbar-metric,
+  .appbar-divider {
+    display: none;
+  }
+  .appbar-right .btn-quiet {
+    min-height: 44px;
+  }
+  .panel-head {
+    flex-wrap: wrap;
   }
 }
 

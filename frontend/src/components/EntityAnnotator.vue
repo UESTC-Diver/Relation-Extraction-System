@@ -68,7 +68,16 @@
       <aside class="entity-side" aria-label="实体清单">
         <div class="side-head">
           <span>实体清单</span>
-          <span class="side-count">{{ uniqueEntities.length }}</span>
+          <span class="side-tools">
+            <span class="side-count">{{ uniqueEntities.length }}</span>
+            <button
+              class="side-fix"
+              type="button"
+              title="校正实体边界、类型与归一写法"
+              aria-label="校正实体"
+              @click="emit('edit-entities')"
+            >校正</button>
+          </span>
         </div>
         <el-scrollbar ref="sideScrollRef" class="side-scroll">
           <button
@@ -339,7 +348,7 @@ function onEntityClick(seg) {
 }
 
 /** 句子角标：由父级决定跳到三元组还是停在本页（当前直接高亮本句） */
-const emit = defineEmits(['locate'])
+const emit = defineEmits(['locate', 'edit-entities'])
 function onSentenceClick(block) {
   focusIndex.value = block.index
   if (block.index >= 0) emit('locate', block.index)
@@ -643,10 +652,31 @@ onBeforeUnmount(() => {
   background: var(--surface-2);
 }
 
+.side-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .side-count {
   font-weight: 400;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+.side-fix {
+  min-height: 24px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  cursor: pointer;
+  transition: color var(--dur-color) var(--ease), border-color var(--dur-color) var(--ease);
+}
+.side-fix:hover {
+  color: var(--brand-red);
+  border-color: var(--brand-red);
 }
 
 .side-scroll {

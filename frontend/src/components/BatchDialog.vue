@@ -19,7 +19,15 @@
         <el-radio-button value="texts">多段文本</el-radio-button>
       </el-radio-group>
       <el-checkbox v-model="save" size="small">写入历史记录</el-checkbox>
-      <span class="bd-limit">单批最多 20 篇 · 每篇 ≤ 20000 字 / 2 MB</span>
+      <el-checkbox
+        v-model="background"
+        size="small"
+        :disabled="mode === 'files'"
+        title="后台任务不占用页面请求，可处理最多 100 篇"
+      >后台运行</el-checkbox>
+      <span class="bd-limit">
+        {{ background && mode === 'texts' ? '后台最多 100 篇 · 可关闭窗口继续跑' : '单批最多 20 篇 · 每篇 ≤ 20000 字 / 2 MB' }}
+      </span>
     </div>
 
     <div v-if="mode === 'files'" class="bd-input">
@@ -27,10 +35,10 @@
         :auto-upload="false"
         :show-file-list="false"
         multiple
-        accept=".txt,.md,.text"
+        accept=".txt,.md,.text,.pdf,.docx"
         :on-change="onFileChange"
       >
-        <el-button :icon="Upload">选择文本文件</el-button>
+        <el-button :icon="Upload">选择文件</el-button>
       </el-upload>
       <div v-if="files.length" class="bd-files">
         <span v-for="f in files" :key="f.name + f.size" class="bd-file">
@@ -38,7 +46,7 @@
           <button type="button" :aria-label="`移除 ${f.name}`" @click="removeFile(f)">×</button>
         </span>
       </div>
-      <p v-else class="bd-placeholder">还没选文件。支持 UTF-8 / GBK / BIG5 / UTF-16，编码自动识别。</p>
+      <p v-else class="bd-placeholder">支持 .txt / .md / .text / .pdf / .docx，纯文本自动识别编码，PDF 与 DOCX 本机解析。</p>
     </div>
 
     <div v-else class="bd-input">
@@ -135,12 +143,12 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Upload } from '@element-plus/icons-vue'
 import * as api from '../api/client'
 
-defineProps({
+const props = defineProps({
   modelValue: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue', 'load', 'finished'])
@@ -148,6 +156,14 @@ const emit = defineEmits(['update:modelValue', 'load', 'finished'])
 const MAX_ITEMS = 20
 const mode = ref('files')
 const save = ref(true)
+const background = ref(false)
+let polling = false
+
+// 后台任务按文本提交；文件模式需要服务端解析，仍走原来的同步批量接口
+watch(mode, (value) => {
+  if (value === 'files') background.value = false
+})
+onBeforeUnmount(() => { polling = false })
 const files = ref([])
 const textBlocks = ref('')
 const running = ref(false)
@@ -160,15 +176,40 @@ const blocks = computed(() =>
     .split(/\n\s*\n/)
     .map((s) => s.trim())
     .filter(Boolean)
-    .slice(0, MAX_ITEMS),
+    .slice(0, background.value ? 100 : MAX_ITEMS),
 )
 const blockCount = computed(() => blocks.value.length)
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function pollTask(taskId) {
+  polling = true
+  for (let i = 0; i < 600 && polling; i += 1) {
+    await delay(500)
+    if (!polling || !props.modelValue) break
+    const state = await api.getTask(taskId)
+    progress.value = state.total ? Math.round((state.done / state.total) * 100) : 0
+    if (state.status === 'done') {
+      report.value = state.result
+      progress.value = 100
+      emit('finished')
+      ElMessage.success(`后台完成 ${state.result.succeeded} 篇，失败 ${state.result.failed} 篇`)
+      return
+    }
+    if (state.status === 'failed') {
+      error.value = state.error || '后台任务失败'
+      return
+    }
+  }
+  if (polling && !report.value) error.value = '任务仍在进行，可稍后重新打开查看'
+  polling = false
+}
 
 function onFileChange(uploadFile) {
   const file = uploadFile?.raw
   if (!file) return
-  if (!/\.(txt|md|text)$/i.test(file.name)) {
-    ElMessage.error(`「${file.name}」不是支持的文本格式`)
+  if (!/\.(txt|md|text|pdf|docx)$/i.test(file.name)) {
+    ElMessage.error(`「${file.name}」不是支持的文件格式`)
     return
   }
   if (file.size > 2 * 1024 * 1024) {
@@ -215,6 +256,18 @@ async function run() {
       text,
       title: `第 ${i + 1} 篇 · ${text.slice(0, 12)}${text.length > 12 ? '…' : ''}`,
     }))
+    if (background.value) {
+      running.value = true
+      try {
+        const task = await api.submitBatchTask(items, save.value)
+        await pollTask(task.task_id)
+      } catch (err) {
+        error.value = err.message
+      } finally {
+        running.value = false
+      }
+      return
+    }
     request = () => api.batchExtract(items, save.value)
   }
 

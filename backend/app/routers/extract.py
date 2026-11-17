@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import io
 import os
 import threading
+import zipfile
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from contextlib import contextmanager
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -15,6 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from .. import db
 from ..nlp.lexicon import RELATION_RULES
 from ..nlp.pipeline import analyze
+from ..nlp import profiles as domain_profiles
 
 router = APIRouter(prefix="/api", tags=["抽取"])
 
@@ -22,6 +27,14 @@ MAX_CHARS = 20000
 MAX_FILE_BYTES = 2 * 1024 * 1024
 CHUNK_SIZE = 64 * 1024
 MAX_BATCH_ITEMS = 20
+MAX_PDF_PAGES = 60
+MAX_DOCX_UNCOMPRESSED = 8 * 1024 * 1024
+try:
+    PARSE_TIMEOUT = max(1.0, float(os.environ.get("APP_PARSE_TIMEOUT", "10")))
+except ValueError:
+    PARSE_TIMEOUT = 10.0
+# 解析库的调用单独放一个线程池，才能对超时做硬截断
+_parse_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="parse")
 
 # 候选编码。gbk 是 gb18030 的子集，结果等价，不再单列。
 ENCODINGS = ("utf-8-sig", "utf-8", "gb18030", "big5", "utf-16")
@@ -46,6 +59,7 @@ class ExtractRequest(BaseModel):
     text: str = Field(..., description="待抽取的中文新闻文本")
     title: str | None = Field(default=None, description="自定义标题，留空则自动截取")
     save: bool = Field(default=True, description="是否写入历史记录")
+    profile: str = Field(default="general", description="领域包：general / finance / legal")
 
 
 class ExtractResponse(BaseModel):
@@ -61,6 +75,7 @@ class BatchItem(BaseModel):
 class BatchRequest(BaseModel):
     items: list[BatchItem] = Field(default_factory=list, max_length=MAX_BATCH_ITEMS)
     save: bool = Field(default=True, description="是否把每篇写入历史")
+    profile: str = Field(default="general", description="领域包：general / finance / legal")
 
 
 _PUNCT = set("，。、；：！？（）《》〈〉「」『』“”‘’…—·～￥％")
@@ -134,11 +149,92 @@ def _decode(raw: bytes, filename: str) -> str:
     return text.lstrip("\ufeff")
 
 
+def _read_pdf(raw: bytes, name: str) -> str:
+    """PyMuPDF 本地解析，不联网、不调用任何外部服务。"""
+    if not raw.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 PDF 文件")
+    try:
+        import pymupdf as fitz
+    except ImportError:
+        try:
+            import fitz  # 旧版包名的兼容别名
+        except ImportError:
+            raise HTTPException(
+                status_code=400, detail="未安装 PyMuPDF，无法解析 PDF（可执行 pip install pymupdf）"
+            )
+    try:
+        with fitz.open(stream=raw, filetype="pdf") as doc:
+            if len(doc) > MAX_PDF_PAGES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"PDF 页数过多（{len(doc)} 页），请控制在 {MAX_PDF_PAGES} 页以内",
+                )
+            text = "\n".join(page.get_text() for page in doc)
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"PDF 解析失败：{err}")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail=f"{name} 没有可提取的文字层（扫描件需先做 OCR）")
+    return text[: MAX_CHARS * 2]
+
+
+def _read_docx(raw: bytes, name: str) -> str:
+    """python-docx 本地解析：段落 + 表格单元格。"""
+    if not raw.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 DOCX 文件")
+    try:
+        from docx import Document
+    except ImportError:
+        raise HTTPException(status_code=400, detail="未安装 python-docx，无法解析 DOCX（可执行 pip install python-docx）")
+    try:
+        # 解压炸弹防护：先核对 zip 入口与累计解压体积，再交给解析库
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            if "word/document.xml" not in archive.namelist():
+                raise HTTPException(status_code=400, detail=f"{name} 缺少 DOCX 正文结构")
+            total = sum(info.file_size for info in archive.infolist())
+            if total > MAX_DOCX_UNCOMPRESSED:
+                raise HTTPException(status_code=413, detail="DOCX 解压后体积过大，请精简文档后重试")
+        document = Document(io.BytesIO(raw))
+        blocks = [p.text for p in document.paragraphs if p.text.strip()]
+        for table in document.tables:
+            for row in table.rows:
+                line = "\t".join(cell.text.strip() for cell in row.cells)
+                if line.strip():
+                    blocks.append(line)
+    except HTTPException:
+        raise
+    except Exception as err:
+        raise HTTPException(status_code=400, detail=f"DOCX 解析失败：{err}")
+    if not blocks:
+        raise HTTPException(status_code=400, detail=f"{name} 没有可提取的文字内容")
+    return "\n".join(blocks)[: MAX_CHARS * 2]
+
+
+ALLOWED_SUFFIXES = (".txt", ".md", ".text", ".pdf", ".docx")
+
+
+def _parse_with_timeout(raw: bytes, name: str) -> str:
+    """解析库放进独立线程池并设硬超时；超时回 400，不把请求挂住。"""
+    target = _read_pdf if name.lower().endswith(".pdf") else _read_docx
+    future = _parse_pool.submit(target, raw, name)
+    try:
+        return future.result(timeout=PARSE_TIMEOUT)
+    except FutureTimeoutError as err:
+        raise HTTPException(status_code=400, detail="文档解析超时，请换用更小的文件") from err
+
+
 async def _read_upload(file: UploadFile) -> tuple[str, str]:
-    """校验扩展名并按块读取，返回 (文本, 去掉扩展名的标题)。"""
+    """校验扩展名与文件头并按块读取，返回 (文本, 去掉扩展名的标题)。
+
+    纯文本走候选编码打分；PDF / DOCX 用本地解析库取文字层，全程离线。
+    """
     name = file.filename or "upload.txt"
-    if not name.lower().endswith((".txt", ".md", ".text")):
-        raise HTTPException(status_code=415, detail="仅支持 .txt / .md / .text 文本文件")
+    if not name.lower().endswith(ALLOWED_SUFFIXES):
+        raise HTTPException(
+            status_code=415,
+            detail="仅支持 .txt / .md / .text / .pdf / .docx 文件",
+        )
     # 分块读取，超限立刻中断 —— 不要等整个文件进内存再判断
     chunks: list[bytes] = []
     size = 0
@@ -153,8 +249,24 @@ async def _read_upload(file: UploadFile) -> tuple[str, str]:
     raw = b"".join(chunks)
     if not raw:
         raise HTTPException(status_code=400, detail="文件内容为空")
-    text = await run_in_threadpool(_decode, raw, name)
+    lowered = name.lower()
+    # 扩展名 + magic bytes 双检：改后缀的二进制文件不能混进解析库
+    if lowered.endswith(".pdf") and not raw.startswith(b"%PDF-"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 PDF 文件")
+    if lowered.endswith(".docx") and not raw.startswith(b"PK"):
+        raise HTTPException(status_code=400, detail=f"{name} 不是有效的 DOCX 文件")
+    if lowered.endswith((".pdf", ".docx")):
+        text = await run_in_threadpool(_parse_with_timeout, raw, name)
+    else:
+        text = await run_in_threadpool(_decode, raw, name)
     return text, name.rsplit(".", 1)[0]
+
+
+def _check_profile(profile: str) -> str:
+    key = (profile or "general").strip()
+    if key not in domain_profiles.valid_keys():
+        raise HTTPException(status_code=400, detail=f"未知领域包：{key}")
+    return key
 
 
 def _run(
@@ -164,19 +276,26 @@ def _run(
     source: str,
     custom_terms: list[dict] | None = None,
     custom_triggers: dict[str, list[str]] | None = None,
+    profile: str = "general",
 ) -> ExtractResponse:
     text = text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="文本内容为空")
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=413, detail=f"文本过长（{len(text)} 字），请控制在 {MAX_CHARS} 字以内")
-    result = analyze(
-        text,
-        custom_terms=custom_terms if custom_terms is not None else db.list_custom_terms(),
-        custom_triggers=custom_triggers if custom_triggers is not None else db.custom_triggers_by_relation(),
+    key = _check_profile(profile)
+    terms, triggers = domain_profiles.merge(
+        custom_terms if custom_terms is not None else db.list_custom_terms(),
+        custom_triggers if custom_triggers is not None else db.custom_triggers_by_relation(),
+        key,
     )
+    result = analyze(text, custom_terms=terms, custom_triggers=triggers)
     result["source"] = source
-    record_id = db.save_record(result, source=source, title=title or "") if save else None
+    result["profile"] = key
+    result["profile_label"] = domain_profiles.get(key)["label"]
+    record_id = (
+        db.save_record(result, source=source, title=title or "", profile=key) if save else None
+    )
     if record_id:
         result["record_id"] = record_id
     return ExtractResponse(record_id=record_id, result=result)
@@ -219,12 +338,15 @@ def _aggregate_in_memory(results: list[dict]) -> dict:
     }
 
 
-def _run_batch(items: list[tuple[str, str]], save: bool, source: str) -> dict:
+def _run_batch(
+    items: list[tuple[str, str]], save: bool, source: str, profile: str = "general"
+) -> dict:
     """逐篇抽取并汇总；单篇失败不打断整批。"""
     if not items:
         raise HTTPException(status_code=400, detail="批量内容为空")
     if len(items) > MAX_BATCH_ITEMS:
         raise HTTPException(status_code=413, detail=f"单批最多 {MAX_BATCH_ITEMS} 篇")
+    key = _check_profile(profile)
     custom_terms = db.list_custom_terms()
     custom_triggers = db.custom_triggers_by_relation()
 
@@ -235,7 +357,7 @@ def _run_batch(items: list[tuple[str, str]], save: bool, source: str) -> dict:
         label = title or (text.strip()[:20] + "…")
         try:
             with _extract_slot():
-                res = _run(text, title, save, source, custom_terms, custom_triggers)
+                res = _run(text, title, save, source, custom_terms, custom_triggers, key)
         except HTTPException as err:
             summaries.append({
                 "index": index, "title": label, "record_id": None,
@@ -275,32 +397,37 @@ def _run_batch(items: list[tuple[str, str]], save: bool, source: str) -> dict:
 @router.post("/extract", response_model=ExtractResponse, summary="粘贴文本抽取")
 def extract_text(payload: ExtractRequest) -> ExtractResponse:
     with _extract_slot():
-        return _run(payload.text, payload.title, payload.save, "text")
+        return _run(payload.text, payload.title, payload.save, "text", profile=payload.profile)
 
 
-@router.post("/extract/file", response_model=ExtractResponse, summary="上传 .txt 文件抽取")
+@router.post("/extract/file", response_model=ExtractResponse, summary="上传文本文件抽取")
 async def extract_file(
-    file: UploadFile = File(..., description="UTF-8 / GBK 编码的 .txt 文件"),
+    file: UploadFile = File(..., description=".txt / .md / .text / .pdf / .docx，纯本地解析"),
     save: bool = True,
+    profile: str = "general",
 ) -> ExtractResponse:
     text, title = await _read_upload(file)
     if not _extract_slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="抽取任务过多，请稍后重试")
     try:
-        return await run_in_threadpool(_run, text, title, save, "file")
+        return await run_in_threadpool(_run, text, title, save, "file", None, None, profile)
     finally:
         _extract_slots.release()
 
 
 @router.post("/extract/batch", summary="批量抽取多段文本")
 def extract_batch(payload: BatchRequest) -> dict:
-    return _run_batch([(item.text, item.title) for item in payload.items], payload.save, "text")
+    return _run_batch(
+        [(item.text, item.title) for item in payload.items],
+        payload.save, "text", payload.profile,
+    )
 
 
 @router.post("/extract/batch/files", summary="批量上传多个文本文件")
 async def extract_batch_files(
-    files: list[UploadFile] = File(..., description="多个 .txt / .md 文本"),
+    files: list[UploadFile] = File(..., description="多个 .txt / .md / .pdf / .docx 文件"),
     save: bool = True,
+    profile: str = "general",
 ) -> dict:
     if len(files) > MAX_BATCH_ITEMS:
         raise HTTPException(status_code=413, detail=f"单批最多 {MAX_BATCH_ITEMS} 个文件")
@@ -308,20 +435,26 @@ async def extract_batch_files(
     for file in files:
         text, title = await _read_upload(file)
         items.append((text, title))
-    return await run_in_threadpool(_run_batch, items, save, "file")
+    return await run_in_threadpool(_run_batch, items, save, "file", profile)
 
 
 @router.get("/health", summary="健康检查")
 def health() -> dict:
+    # 延迟取版本号：版本只在 main 里定义一处，避免两处硬编码各改一半。
+    from ..main import VERSION
+    from ..verify import capability
+
     return {
         "status": "ok",
         "engine": "rule-based-cn-nlp",
-        "version": "1.2.0",
+        "version": VERSION,
         "relation_types": len(RELATION_RULES),
+        "profiles": domain_profiles.valid_keys(),
         "custom_terms": len(db.list_custom_terms()),
         "custom_rules": len(db.list_custom_rules()),
         "records": db.overview()["records"],
         "db_size_bytes": db.db_size_bytes(),
         "max_concurrent_extract": MAX_CONCURRENT_EXTRACT,
         "full_text_search": db.fts_enabled(),
+        "verify_external": capability()["enabled"],
     }

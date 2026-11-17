@@ -25,6 +25,12 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(db, "DB_PATH", tmp_path / "test.db")
     monkeypatch.setattr(db, "DATA_DIR", tmp_path)
 
+    # 测试客户端所有请求都来自同一个 IP，一整套用例会超过生产限流额度；
+    # 同时清掉本机可能残留的写保护 / 分享签名密钥，保证测试可重复。
+    monkeypatch.setenv("APP_RATE_LIMIT_PER_MIN", "100000")
+    monkeypatch.delenv("APP_API_TOKEN", raising=False)
+    monkeypatch.delenv("APP_REPORT_SECRET", raising=False)
+
     from app.main import app
 
     with TestClient(app) as c:
