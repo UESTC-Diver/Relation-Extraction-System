@@ -12,6 +12,8 @@
 const BOM = '\ufeff'
 const ILLEGAL_CHARS = /[\\/:*?"<>|\r\n]/g
 
+import { ruleLabel } from './labels'
+
 const TYPE_LABEL = {
   PERSON: '人物',
   ORG: '组织机构',
@@ -80,6 +82,7 @@ export function buildCsv(result, meta) {
     'confidence',
     'trigger',
     'evidence',
+    'rule_base',
   ]
   const rows = (result.relations || []).map((r) => [
     r.head,
@@ -93,6 +96,7 @@ export function buildCsv(result, meta) {
     r.confidence,
     r.trigger || '',
     r.evidence || '',
+    r.rule_base || '',
   ])
   const body = [header, ...rows].map((cols) => cols.map(csvCell).join(',')).join('\r\n')
   return {
@@ -155,11 +159,17 @@ export function buildMarkdown(result, meta) {
   }
 
   if (relations.length) {
-    lines.push('## 关系三元组', '', '| 头实体 | 关系 | 尾实体 | 触发词 | 置信度 |', '| --- | --- | --- | --- | --- |')
+    lines.push(
+      '## 关系三元组',
+      '',
+      '| 头实体 | 关系 | 尾实体 | 触发词 | 置信度 | 来源 |',
+      '| --- | --- | --- | --- | --- | --- |',
+    )
     for (const r of relations) {
       lines.push(
         `| ${mdCell(r.head)} | ${mdCell(r.relation_label || r.relation)} | ` +
-          `${mdCell(r.tail)} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} |`,
+          `${mdCell(r.tail)} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} | ` +
+          `${mdCell(ruleLabel(r.rule_base))} |`,
       )
     }
     lines.push('')

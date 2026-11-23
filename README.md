@@ -269,12 +269,13 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # CLI 入口，调用 nlp/evaluation.py（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（169 条，临时库隔离）
+│  ├─ tests/                  # pytest 回归测试（172 条，临时库隔离）
 │  │  ├─ conftest.py          # 每个用例把 db.DB_PATH 指向 tmp_path，不碰真实 app.db
 │  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越（16 条）
 │  │  ├─ test_features.py     # FTS5/增量计数/批量/自定义规则/健康信息（12 条）
 │  │  ├─ test_features_v13.py # 知识库/质量闭环/离线交付/后台任务/PDF·DOCX（18 条）
 │  │  ├─ test_corrections.py  # 词典/快照/人工校正 P1 回归（9 条）
+│  │  ├─ test_nlp.py          # 主语链 / 双方 / 后者供应的点状回归（3 条）
 │  │  ├─ test_features_v14.py # 安全集与复核定稿闭环（12 条）
 │  │  ├─ test_features_v15.py # 解释字段/规则体检/领域包/静态试用数据（19 条）
 │  │  ├─ test_features_v16.py # 标注集/判定/补录归并/双口径评测/删除清理（18 条）
@@ -294,6 +295,8 @@
 │  │  ├─ element-overrides.css# 组件库皮肤覆盖，排在组件库 CSS 之后加载
 │  │  ├─ api/client.js        # Axios 封装（抽取/批量/记录/规则/知识库/质量/交付）
 │  │  ├─ utils/export.js      # 导出构建：CSV / JSON / MD / GraphML / Cypher
+│  │  ├─ utils/entities.js    # 实体归一、原文定位、校正后的实体同步
+│  │  ├─ utils/labels.js      # 抽取来源 / 规则标签的唯一映射
 │  │  ├─ data/landing-demo.json # 首页演示数据：pipeline 真实抽取结果与关系目录
 │  │  ├─ data/demo-samples.json # 静态试用数据：4 篇样例的真实 analyze() 输出（含解释）
 │  │  └─ components/
@@ -315,6 +318,8 @@
 │  │     ├─ AnnotationDialog.vue # 金标准标注：逐条三态、补录、覆盖度、复核预填
 │  │     ├─ EntityFixDialog.vue # 实体级校正：边界 / 类型 / 归一写法与增删
 │  │     └─ ReviewDialog.vue    # 复核台：逐条结论、批注、状态流转、定稿与分享
+│  ├─ tests/                  # Vitest：实体同步 / 标签映射 / 导出列
+│  ├─ eslint.config.js        # ESLint 9 flat config（Vue + browser globals）
 │  ├─ public/                 # favicon.svg、robots.txt、fonts/（本地西文字体）、media/
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
@@ -411,11 +416,17 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 cd backend
 python -m pip install -r requirements-dev.txt
 python -m ruff check app tests   # lint 门禁
-python -m pytest -q              # 169 passed
+python -m pytest                 # 172 collected（169 passed / 3 skipped）
 python eval/run_eval.py --json   # F1 ≥ 0.95
+
+cd ../frontend
+npm install
+npm run lint
+npm test                         # 16 passed
+npm run build
 ```
 
-这三步与 `.github/workflows/ci.yml` 里 GitHub Actions 的 backend job 完全一致（另外还有 frontend job 跑 `npm ci && npm run build`）；`ruff.toml` 只开 `F` / `E9`，聚焦未定义名、未使用导入与语法错误这类会让程序悄悄坏掉的问题。
+这些步骤与 `.github/workflows/ci.yml` 的 backend / frontend job 一致（frontend 跑 `npm ci && npm run lint && npm test && npm run build`）；`ruff.toml` 只开 `F` / `E9`，聚焦未定义名、未使用导入与语法错误这类会让程序悄悄坏掉的问题。
 
 `tests/conftest.py` 在每个用例里把 `db.DB_PATH` 指向 `tmp_path` 下的临时库，测试不会污染 `backend/data/app.db`。
 
@@ -424,10 +435,13 @@ python eval/run_eval.py --json   # F1 ≥ 0.95
 - `test_features_v13.py`（18 条）：全局实体画像与跨文档图谱合并、标签设置与筛选、冲突检测、低置信度复核队列、评测接口与历史、自定义金标准、规则 A/B 试跑不落库、配置版本回滚、实体级校正写回、单文件离线 HTML（无脚本外链）、只读报告页、项目包 merge / replace 导入、后台批量任务进度与结果、PDF / DOCX 本地解析上传。
 - `test_features_v14.py`（12 条）：CORS 默认白名单、复核状态与结论汇总、状态机必须走 `/finalize`、定稿锁定三处写接口与快照不可变、报告含复核区块与只读页 `noindex`、签名强制模式与过期拒绝、请求体上限、per-IP 限流、伪造 magic bytes 拒绝、PDF 页数上限、删除 / 清空连带清理复核数据。
 - `test_corrections.py`（9 条）：自定义词典 CRUD 与热生效、非法词条 400、快照往返、人工校正往返（`sentence_index: null` 落库为 -1）、人工新增关系的实体快照回写、非法关系 400、清空全部关系。
+- `test_nlp.py`（3 条）：主语链继承、跨句双方、后者供应方向。
 - `test_features_v16.py`（18 条）：标注集 CRUD 与幂等追加、标注不影响抽取结果、正负例与撤回、补录计入 gold 且 `origin=manual`、补录与已抽项自动归并、实体字段以后端记录为准、非法关系 400、无正例评测 400、双口径不倒挂、全覆盖时两口径相等、内置集评测字段不变、回归历史按数据集分开、复核结论只预填不落库、删记录连带清理、删集不影响标注、覆盖度接口。
 - `test_features_v15.py`（19 条）：解释字段挂到每条关系且不改变三元组、句式模板给出可读骨架、历史记录由同一纯函数重建解释、离线报告含「为什么抽出来」、规则体检的命中热区与未命中触发词、空库不硬凑建议、复核驳回进入体检摘要、三个领域包各自新增触发词且不改 19 类 schema、`merge` 不修改入参、记录保存领域包且报告标注、静态试用数据完整且不引用网络资源。
 - `test_features_v22.py`（13 条）：空库只给 baseline；实体在原文里定位不到时如实报 `unlocatable` 而不硬猜；单条补录不产生滑窗碎片、默认被隐藏；同一说法出现多次时反推成候选并且**自证通过**（加词后确实抽得出）；高频词吃掉上下文更长的碎片；已注册触发词不重复提；候选词已属于别的关系时标出冲突；**反推前后 `relations` / `custom_rules` / `annotations` 三张表行数不变**（这是「只读」的硬断言）；被否掉的自动项反推出过宽的触发词；`set_id` 限定范围；未知集 404；`verify=false` 时 `verified` 全为 `None`；实体在句中顺序与三元组相反也能定位。
 - `test_features_v21.py`（21 条）：案卷 CRUD 与幂等归档、同一记录被两个案卷引用时改三元组两边同步、跨材料归并与 `support_count`、**推断调用前后 `relations` 表行数不变且不出现在记录详情里**（这是「推断永不入库」的硬断言）、多次读视图推断结果稳定、`subsidiary` 方向反转后控制链不倒着走、已有直接结论不再生成同向推断、同一人任职与同一创始人、省市级别地址不触发同址推断而路/门牌级触发、标的按归一化名匹配不误报孤儿材料、诉讼与合作并存报 `tension` 而非 `conflict`、权益族内部矛盾报 `conflict`、标的留空时自动推断并标 `subject_auto`、报告把推断放进独立区块且不混入直接结论表、删记录只摘材料不删案卷、清空历史连案卷一起清、示例案卷下点击不重复建卷、空案卷视图与报告不崩。
+
+前端用 Vitest 覆盖实体归一与实体同步、规则来源标签、CSV / Markdown 的人工校正来源列；ESLint 负责组件与工具脚本的静态检查。
 
 ---
 
@@ -817,7 +831,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 新增实体词条：向对应 `*_GAZETTEER` 追加，启动时会自动注入 jieba 用户词典；临时补词走界面的「自定义实体词典」。
 - **样式分层**：`styles.css` 是首页与工作台共用的基础层；Element Plus 的组件库 CSS 与皮肤覆盖放在 `element-setup.js` / `element-overrides.css`，只在 `/app` 动态加载。新增 `--el-*` 变量或组件级覆盖时请写进 `element-overrides.css`（选择器保留 `html` 前缀），否则首页会白下载组件样式、工作台会被默认蓝盖掉。
 - 修改后建议执行 `python devtools/check.py` 做回归，再 `npm run build` 刷新前端产物。
-- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`，并跑一次 `npm run build`；CI（`.github/workflows/ci.yml`）在 push 与 PR 上自动执行同样四步，评测还会断言 `F1 ≥ 0.95`。
+- 提交前依次运行 `python -m ruff check app tests`、`python -m pytest`、`python eval/run_eval.py`；前端运行 `npm run lint && npm test && npm run build`。CI（`.github/workflows/ci.yml`）在 push 与 PR 上自动执行同样步骤，评测还会断言 `F1 ≥ 0.95`。
 - 凡涉及抽取规则、词典或置信度的改动，务必再跑一次 `python eval/run_eval.py` 确认 F1 未回退；新增错误类型可先补进 `eval/gold.json`，让改动有可验证的收益。评测算法只有 `app/nlp/evaluation.py` 一份，CLI 与 `/api/eval` 都调用它，不要在界面里另写一套 P/R/F1。
 - 知识库、质量与交付的查询集中在 `store.py`，复核闭环单独在 `review_store.py`；全局实体直接来自 `relations` 的归一字段，新增查询时优先复用这一层，避免出现需要额外同步的实体表。`/report/{id}` 必须在 `main.py` 的 SPA catch-all 之前注册；改安全策略看 `security.py` 与 `backend/.env.example`。
 - 首页演示数据集中在 `frontend/src/data/landing-demo.json`。改过抽取规则后要重新从 `pipeline.analyze()` 导出；首页不展示评测数字，评测集与指标只在 `backend/eval/` 与本文第九节维护。
@@ -829,9 +843,9 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 
 | 项目 | 结论 |
 | --- | --- |
-| 接口回归 | `python -m pytest -q` → **169 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
-| 静态检查 | `python -m ruff check app tests` → **All checks passed** |
-| CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.95`），frontend 跑 lockfile 校验 + `npm ci && npm run build` |
+| 接口回归 | `python -m pytest` → **172 collected（169 passed / 3 skipped）**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0 + 3 条 NLP 点状回归；未装可选 PDF/DOCX 依赖时跳过 3 条），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
+| 静态检查 | `python -m ruff check app tests` → **All checks passed**；前端 `npm run lint` → **clean** |
+| CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.95`）；frontend 跑 lockfile 校验 + `npm ci && npm run lint && npm test && npm run build` |
 | 效果评测 | P 0.960 / R 1.000 / **F1 0.980** / Macro-F1 0.986，与第九节一致、本轮未回退 |
 | 生产构建 | `npm run build` 通过、**无体积警告**。首页入口 **283.72 KB（gzip 107.86 KB）** + 基础 CSS 42.04 KB（gzip 8.01 KB），**完全不请求 Element Plus**；`/demo` 独立 chunk 33.86 KB（gzip 9.22 KB，含 4 篇样例数据），只在访问该路由时下载；工作台 `element-setup` JS 288.32 KB / CSS 365.00 KB，图谱 chunk 443.34 KB，规则实验室 14.91 KB（gzip 6.41 KB，含学规则页签）、三元组表格 16.17 KB、标注台 10.04 KB（gzip 4.25 KB）、案卷页 17.57 KB（gzip 7.31 KB） |
 | 安全集 | CORS 默认白名单（本机 8000 / Vite 5173）、per-IP 滑动窗口限流（默认 120 次/分）、全局请求体上限 4 MB、上传扩展名 + magic bytes 双检、PDF ≤60 页 + 解析硬超时、DOCX 解压体积上限、结构化 JSON 访问日志 + `X-Request-ID`；只读页 `noindex` / `no-referrer` / `private, no-store`，分享链 HMAC 签名 + 有效期 |
