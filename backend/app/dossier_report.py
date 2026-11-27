@@ -301,6 +301,6 @@ def build_dossier_report(view: dict[str, Any]) -> str:
 <b>使用建议。</b>把「未闭环的疑点」当作下一轮要补的材料清单：单一来源的结论去要第二份文件，
 说法冲突的先看两份文件的出具时间与主体，再决定采信哪一份。
 </div>
-<footer><span>由中文关系抽取系统 v2.1.0 生成 · 规则驱动，无外部 API</span>
+<footer><span>由文本关系抽取与信息甄别系统 v2.1.0 生成 · 规则驱动，无外部 API</span>
 <span>数据不出本机</span></footer>
 </div></body></html>"""

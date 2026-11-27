@@ -3,14 +3,14 @@
     <a class="ds-skip" href="#ds-main">跳到主要内容</a>
 
     <header class="ds-nav">
-      <a class="ds-wordmark" href="/" aria-label="中文关系抽取系统，返回首页">
+      <a class="ds-wordmark" href="/" aria-label="文本关系抽取与信息甄别系统，返回首页">
         <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
           <rect x="3" y="5" width="22" height="24" rx="1.5" fill="#fffdf6" />
           <path d="M7 12h14M7 17h10M7 22h14" stroke="#1e1c18" stroke-width="1.4" stroke-linecap="round" opacity=".55" />
           <path d="M9 24.5 24 24.5" stroke="#a8322a" stroke-width="2" stroke-linecap="round" />
           <circle cx="24" cy="24.5" r="3.2" fill="#a8322a" />
         </svg>
-        <span>中文关系抽取系统</span>
+        <span>文本关系抽取与信息甄别系统</span>
       </a>
       <nav class="ds-nav-links" aria-label="页面导航">
         <a href="/">首页</a>

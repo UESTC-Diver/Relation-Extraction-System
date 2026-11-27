@@ -27,7 +27,7 @@ import uvicorn  # noqa: E402
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="中文关系抽取系统 - 启动器")
+    parser = argparse.ArgumentParser(description="文本关系抽取与信息甄别系统 - 启动器")
     parser.add_argument("--host", default="127.0.0.1", help="监听地址，默认 127.0.0.1")
     parser.add_argument("--port", type=int, default=8000, help="监听端口，默认 8000")
     parser.add_argument("--reload", action="store_true", help="开发模式：代码变更自动重启")

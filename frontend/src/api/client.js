@@ -33,7 +33,7 @@ export const extractText = (text, title = '', save = true, options = {}) =>
     {
       text, title, save,
       profile: options.profile || 'general',
-      language: options.language || 'zh',
+      language: options.language || 'auto',
     },
     { signal: options.signal },
   )
@@ -42,7 +42,7 @@ export const extractFile = (file, save = true, options = {}) => {
   const form = new FormData()
   form.append('file', file)
   return http.post(
-    `/extract/file?save=${save}&profile=${encodeURIComponent(options.profile || 'general')}&language=${encodeURIComponent(options.language || 'zh')}`,
+    `/extract/file?save=${save}&profile=${encodeURIComponent(options.profile || 'general')}&language=${encodeURIComponent(options.language || 'auto')}`,
     form,
     {
       headers: { 'Content-Type': 'multipart/form-data' },

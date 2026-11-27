@@ -40,7 +40,7 @@ from .routers import (
 )
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 
 
 @asynccontextmanager
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="中文关系抽取系统 API",
+    title="文本关系抽取与信息甄别系统 API",
     description=(
         "基于词典与词法规则的中文实体识别 + 关系抽取服务。\n\n"
         "识别实体：人物 / 组织机构 / 地理位置 / 时间 / 金额 / 产品技术\n"
@@ -167,7 +167,7 @@ def root():
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
     return JSONResponse(
         {
-            "service": "中文关系抽取系统",
+            "service": "文本关系抽取与信息甄别系统",
             "docs": "/docs",
             "hint": "前端未构建：在 frontend 目录执行 npm install && npm run build，或 npm run dev",
         }

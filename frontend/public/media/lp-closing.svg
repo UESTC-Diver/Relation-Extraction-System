@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 300" fill="none" role="img" aria-label="原文校样上的朱红批注引出实体关系连线，连线的明度表示置信度">
+  <!--
+    原创主视觉：每一条关系都能回到原文。
+    左侧留白承载主张；右侧是「校样文字行 -> 朱红批注 -> 关系节点」的可视化，
+    连线明度 = 置信度（亮=高，暗=低）。无伪文字、无 Logo、无装饰特效。
+    所有几何元素确定性绘制，可无限缩放不失真。
+  -->
+  <defs>
+    <!-- 校样文字质感：长短不一的短线模拟中文行，不含真实文字，避免乱码 -->
+    <pattern id="proof" width="48" height="15" patternUnits="userSpaceOnUse">
+      <rect x="0" y="4" width="16" height="2.5" rx="1" fill="#f6f3ea" opacity=".15" />
+      <rect x="19" y="4" width="10" height="2.5" rx="1" fill="#f6f3ea" opacity=".11" />
+      <rect x="32" y="4" width="12" height="2.5" rx="1" fill="#f6f3ea" opacity=".13" />
+    </pattern>
+  </defs>
+
+  <!-- 校样行：六行，右端错落，构成「原件」 -->
+  <g>
+    <rect x="620" y="66" width="520" height="15" fill="url(#proof)" />
+    <rect x="620" y="96" width="470" height="15" fill="url(#proof)" />
+    <rect x="620" y="126" width="500" height="15" fill="url(#proof)" />
+    <rect x="620" y="156" width="430" height="15" fill="url(#proof)" />
+    <rect x="620" y="186" width="490" height="15" fill="url(#proof)" />
+    <rect x="620" y="216" width="380" height="15" fill="url(#proof)" />
+  </g>
+
+  <!-- 朱红批注：下划线 + 圈注，都锚在具体的某一行上 -->
+  <rect x="736" y="125" width="126" height="2" rx="1" fill="#a8322a" opacity=".95" />
+  <ellipse cx="806" cy="163" rx="74" ry="13" stroke="#a8322a" stroke-width="1.6" opacity=".9" />
+
+  <!-- 批注引线：从圈注处连到关系节点 -->
+  <path d="M878 163 C 906 163, 910 122, 940 110" stroke="#a8322a" stroke-width="1.5" opacity=".85" />
+
+  <!-- 关系连线：明度编码置信度（亮=高，暗=低） -->
+  <path d="M940 110 L1100 170" stroke="#f6f3ea" stroke-width="1.8" opacity=".62" />
+  <path d="M1100 170 L1252 90" stroke="#f6f3ea" stroke-width="1.2" opacity=".28" />
+  <path d="M940 110 L1030 236" stroke="#f6f3ea" stroke-width="1.4" opacity=".40" />
+  <path d="M1030 236 L1100 170" stroke="#a8322a" stroke-width="1.7" opacity=".72" />
+
+  <!-- 回指原文：关系节点连回校样行，「每条关系都能回到原文」 -->
+  <path d="M1100 170 C 1078 200, 1040 216, 1006 220" stroke="#f6f3ea" stroke-width="1" opacity=".32" />
+
+  <!-- 实体节点：朱红为被批注的锚点，纸色为关联实体 -->
+  <circle cx="940" cy="110" r="7" fill="#f6f3ea" />
+  <circle cx="940" cy="110" r="13" stroke="#f6f3ea" stroke-width="1" opacity=".22" />
+  <circle cx="1100" cy="170" r="9" fill="#a8322a" />
+  <circle cx="1100" cy="170" r="16" stroke="#a8322a" stroke-width="1" opacity=".3" />
+  <circle cx="1252" cy="90" r="5" fill="#f6f3ea" opacity=".7" />
+  <circle cx="1030" cy="236" r="6" fill="#ddd5c2" opacity=".85" />
+</svg>

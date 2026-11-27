@@ -22,7 +22,7 @@
     <a class="skip-link" href="#result-panel">跳到抽取结果</a>
 
     <header class="appbar">
-      <a class="appbar-brand" href="/" title="返回首页" aria-label="中文关系抽取系统，返回首页">
+      <a class="appbar-brand" href="/" title="返回首页" aria-label="文本关系抽取与信息甄别系统，返回首页">
         <svg class="appbar-logo" viewBox="0 0 26 26" fill="none" aria-hidden="true">
           <path
             d="M8.1 8.4 L18.1 11 M8.5 10 L11.2 17.2 M18.4 12.6 L14.6 18.2"
@@ -34,7 +34,7 @@
           <circle cx="20.2" cy="10.6" r="3.1" fill="#201e19" />
           <circle cx="13" cy="20" r="3.1" fill="#a8322a" />
         </svg>
-        <h1 class="appbar-name">中文关系抽取系统</h1>
+        <h1 class="appbar-name">文本关系抽取与信息甄别系统</h1>
       </a>
 
       <div class="appbar-right">
@@ -99,6 +99,10 @@
               <el-dropdown-item command="rules">
                 <span class="exp-label">规则实验室</span>
                 <span class="exp-hint">候选触发词 A/B 试跑与配置回滚</span>
+              </el-dropdown-item>
+              <el-dropdown-item command="engines">
+                <span class="exp-label">双引擎对比</span>
+                <span class="exp-hint">同一件事的中英说法，看两套引擎如何落到同一套 schema</span>
               </el-dropdown-item>
               <el-dropdown-item command="import" divided>
                 <span class="exp-label">导入项目包</span>
@@ -422,6 +426,7 @@
       @saved="refreshStats"
     />
     <RulesLabDialog v-model="rulesOpen" :schema="schema" @changed="refreshStats" />
+    <EngineCompareDialog v-model="enginesOpen" />
     <EntityFixDialog
       v-model="entityFixOpen"
       :entities="result?.entities || []"
@@ -478,6 +483,7 @@ const KnowledgeDialog = defineAsyncComponent(() => import('./components/Knowledg
 const AnnotationDialog = defineAsyncComponent(() => import('./components/AnnotationDialog.vue'))
 const EvalDialog = defineAsyncComponent(() => import('./components/EvalDialog.vue'))
 const RulesLabDialog = defineAsyncComponent(() => import('./components/RulesLabDialog.vue'))
+const EngineCompareDialog = defineAsyncComponent(() => import('./components/EngineCompareDialog.vue'))
 const EntityFixDialog = defineAsyncComponent(() => import('./components/EntityFixDialog.vue'))
 const ReviewDialog = defineAsyncComponent(() => import('./components/ReviewDialog.vue'))
 // /demo 是零后端静态沙箱：只在访问该路由时才下载组件与 4 篇真实样例数据，
@@ -510,32 +516,32 @@ const page = ref(resolvePage())
    不该被搜索引擎当内容页收录，静态试用页则应当可以索引。 */
 const PAGE_META = {
   landing: {
-    title: '中文关系抽取系统 · 把每一条关系追溯到原文',
+    title: '文本关系抽取与信息甄别系统 · 把每一条关系追溯到原文',
     description: '基于词典与规则模板的中文实体识别与关系抽取系统。6 类实体、19 类关系，每条三元组都附带证据句、触发词与置信度。本地离线运行，效果可用金标准集复现。',
     robots: 'index, follow',
   },
   demo: {
-    title: '静态试用 · 中文关系抽取系统',
+    title: '静态试用 · 文本关系抽取与信息甄别系统',
     description: '不联网、不连后端，用四篇由本机抽取引擎真实运行导出的样例，预演实体、三元组、命中路径与导出结果。',
     robots: 'index, follow',
   },
   cases: {
-    title: '尽调案卷 · 中文关系抽取系统',
+    title: '尽调案卷 · 文本关系抽取与信息甄别系统',
     description: '把一个标的的多份材料收进一个案卷，按直接结论、推断关联与待补强疑点三层摆开，每条都能回到原句。',
     robots: 'noindex, nofollow',
   },
   verify: {
-    title: '信息甄别 · 中文关系抽取系统',
+    title: '信息甄别 · 文本关系抽取与信息甄别系统',
     description: '把一段网传消息拆成可核查的断言，按有据可查、存疑待核、无从核实分层，标出可疑措辞并给出证据线索。',
     robots: 'index, follow',
   },
   app: {
-    title: '工作台 · 中文关系抽取系统',
+    title: '工作台 · 文本关系抽取与信息甄别系统',
     description: '输入中文文本，识别实体并抽取关系三元组，逐条查看证据句与命中路径。',
     robots: 'noindex, nofollow',
   },
   missing: {
-    title: '页面不存在 · 中文关系抽取系统',
+    title: '页面不存在 · 文本关系抽取与信息甄别系统',
     description: '该地址没有对应的页面。',
     robots: 'noindex, nofollow',
   },
@@ -560,7 +566,7 @@ const SPLIT_KEY = 're.splitPref'
 const text = ref('')
 const title = ref('')
 const profile = ref('general')
-const language = ref('zh')
+const language = ref('auto')
 const result = ref(null)
 const loading = ref(false)
 const tab = ref('entities')
@@ -575,6 +581,7 @@ const knowledgeOpen = ref(false)
 const evalOpen = ref(false)
 const annotationOpen = ref(false)
 const rulesOpen = ref(false)
+const enginesOpen = ref(false)
 const entityFixOpen = ref(false)
 const reviewOpen = ref(false)
 const reviewState = ref(null)
@@ -937,10 +944,12 @@ async function runExtract({ save = true } = {}) {
     })
     if (seq !== extractSeq) return
     applyResult(res.result, res.record_id)
-    liveMessage.value = `抽取完成：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系`
+    const usedLang = res.result.language === 'en' ? 'English' : '中文'
+    const langHint = language.value === 'auto' ? `（自动识别：${usedLang}）` : ''
+    liveMessage.value = `抽取完成：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系${langHint}`
     if (save) {
       ElMessage.success(
-        `已存入历史 #${res.record_id}：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系`,
+        `已存入历史 #${res.record_id}：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系${langHint}`,
       )
     }
   } catch (err) {
@@ -1067,6 +1076,7 @@ async function onMoreCommand(command) {
   if (command === 'annotate') annotationOpen.value = true
   if (command === 'eval') evalOpen.value = true
   if (command === 'rules') rulesOpen.value = true
+  if (command === 'engines') enginesOpen.value = true
   if (command === 'import') projectInput.value?.click()
   if (command === 'share') await copyReadonlyLink()
 }

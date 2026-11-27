@@ -264,7 +264,7 @@ def build_report_html(
 <title>{_esc(title)} · 关系抽取报告</title>
 <style>{_STYLE}</style></head><body><div class="wrap">
 <header>
-  <p class="eyebrow">中文关系抽取系统 · 分析报告</p>
+  <p class="eyebrow">文本关系抽取与信息甄别系统 · 分析报告</p>
   <h1>{_esc(title)}</h1>
   <p class="meta">生成于 {_esc(generated)}
   {f'· 历史记录 #{_esc(record_id)}' if record_id else '· 预览结果（未入库）'}{profile_note}</p>
@@ -283,5 +283,5 @@ def build_report_html(
 <table><thead><tr><th>原文写法</th><th>类型</th><th>归一写法</th></tr></thead>
 <tbody>{ent_rows}</tbody></table>
 <h2>原文</h2><div class="doc">{_esc(data.get('text', ''))}</div>
-<footer><span>由中文关系抽取系统生成 · 规则驱动，无外部 API</span><span>{footer_right}</span></footer>
+<footer><span>由文本关系抽取与信息甄别系统生成 · 规则驱动，无外部 API</span><span>{footer_right}</span></footer>
 </div></body></html>"""

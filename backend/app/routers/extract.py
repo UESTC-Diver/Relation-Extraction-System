@@ -60,7 +60,7 @@ class ExtractRequest(BaseModel):
     title: str | None = Field(default=None, description="自定义标题，留空则自动截取")
     save: bool = Field(default=True, description="是否写入历史记录")
     profile: str = Field(default="general", description="领域包：general / finance / legal")
-    language: str = Field(default="zh", description="语言：zh（自研规则引擎）/ en（spaCy 引擎）")
+    language: str = Field(default="auto", description="语言：auto（按 CJK 占比自动选，默认）/ zh（自研规则引擎）/ en（spaCy 引擎）")
 
 
 class ExtractResponse(BaseModel):
@@ -278,16 +278,16 @@ def _run(
     custom_terms: list[dict] | None = None,
     custom_triggers: dict[str, list[str]] | None = None,
     profile: str = "general",
-    language: str = "zh",
+    language: str = "auto",
 ) -> ExtractResponse:
     text = text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="文本内容为空")
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=413, detail=f"文本过长（{len(text)} 字），请控制在 {MAX_CHARS} 字以内")
-    lang = (language or "zh").strip().lower()
-    if lang not in ("zh", "en"):
-        raise HTTPException(status_code=400, detail=f"未知语言：{language}（仅支持 zh / en）")
+    lang = (language or "auto").strip().lower()
+    if lang not in ("auto", "zh", "en"):
+        raise HTTPException(status_code=400, detail=f"未知语言：{language}（仅支持 auto / zh / en）")
     key = _check_profile(profile)
     terms, triggers = domain_profiles.merge(
         custom_terms if custom_terms is not None else db.list_custom_terms(),
@@ -302,7 +302,8 @@ def _run(
     result["source"] = source
     result["profile"] = key
     result["profile_label"] = domain_profiles.get(key)["label"]
-    result["language"] = lang
+    # 实际引擎由 pipeline 按语言判别写入，不覆盖成请求里的 "auto"
+    result["language"] = result.get("language", "zh")
     record_id = (
         db.save_record(result, source=source, title=title or "", profile=key) if save else None
     )
@@ -418,7 +419,7 @@ async def extract_file(
     file: UploadFile = File(..., description=".txt / .md / .text / .pdf / .docx，纯本地解析"),
     save: bool = True,
     profile: str = "general",
-    language: str = "zh",
+    language: str = "auto",
 ) -> ExtractResponse:
     text, title = await _read_upload(file)
     if not _extract_slots.acquire(blocking=False):

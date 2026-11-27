@@ -12,14 +12,14 @@
     <!-- ===================== 导航：纯色一行，无玻璃、无浮岛 ===================== -->
     <header class="lp-nav-wrap" :class="{ 'is-scrolled': scrolled }">
       <nav class="lp-nav" aria-label="页面导航">
-        <a class="lp-wordmark" href="/" aria-label="中文关系抽取系统，返回首页">
+        <a class="lp-wordmark" href="/" aria-label="文本关系抽取与信息甄别系统，返回首页">
           <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
             <rect x="3" y="5" width="22" height="24" rx="1.5" fill="#f6f3ea" />
             <path d="M7 12h14M7 17h10M7 22h14" stroke="#1e1c18" stroke-width="1.4" stroke-linecap="round" opacity=".55" />
             <path d="M9 24.5 24 24.5" stroke="#a8322a" stroke-width="2" stroke-linecap="round" />
             <circle cx="24" cy="24.5" r="3.2" fill="#a8322a" />
           </svg>
-          <span>中文关系抽取系统</span>
+          <span>文本关系抽取与信息甄别系统</span>
         </a>
 
         <div class="lp-nav-links" :class="{ 'is-open': menuOpen }" :id="menuId">
@@ -184,9 +184,9 @@
         <div class="lp-frame">
           <div class="lp-close-copy reveal">
             <h2 class="lp-h2">每一条关系，都能回到原文</h2>
-            <p class="lp-body">把一段中文文本交给它，拿回可核对的实体、关系与证据句。点开任意一条，就能看见它从哪句话来。</p>
+            <p class="lp-body">粘一段中文或英文消息进来，拿回可核对的实体、关系与证据句。点开任意一条，就能看见它从哪句话来。</p>
             <a class="lp-close-link" href="#method">看它怎么工作 <span aria-hidden="true">↓</span></a>
-            <p class="lp-cap lp-close-note">本机处理 · 数据不出本机</p>
+            <p class="lp-cap lp-close-note">默认本机处理 · 联网核验需主动勾选</p>
           </div>
         </div>
       </section>
@@ -415,12 +415,12 @@
     <footer class="lp-footer">
       <div class="lp-frame">
         <div class="lp-footer-top">
-          <p class="lp-cap">中文实体识别与关系抽取</p>
+          <p class="lp-cap">中英实体识别 · 关系抽取 · 信息甄别</p>
           <a class="lp-cap" href="#lp-main">回到顶部 ↑</a>
         </div>
-        <p class="lp-footer-word">中文关系抽取系统</p>
+        <p class="lp-footer-word">文本关系抽取与信息甄别系统</p>
         <div class="lp-footer-meta lp-cap">
-          <span>本机处理 · 数据不出本机</span>
+          <span>默认本机处理 · 联网核验需主动勾选</span>
           <span>2026 · <a href="/app">进入工作台 →</a></span>
         </div>
       </div>
@@ -969,12 +969,13 @@ html.lp-anim .lp-margin-content .lp-note {
   to { opacity: 1; transform: none; }
 }
 
-/* ---------- 价值段：Figma AI 生成的纸墨朱主视觉，接替原「运行」命令屏 ----------
-   图本身无可读文字 / Logo，左侧留白承载主张；只在窄屏加纯色遮罩保证对比度。 */
+/* ---------- 价值段：原创 SVG 主视觉（校样行 + 朱红批注 + 关系连线） ----------
+   SVG 无可读伪文字 / Logo，左侧留白承载主张；连线明度编码置信度。
+   背景色兜底，窄屏加纯色遮罩保证对比度。 */
 .lp-closesec {
   position: relative;
   isolation: isolate;
-  background: var(--dark) url('/media/lp-closing.jpg') center center / cover no-repeat;
+  background: var(--dark) url('/media/lp-closing.svg') center center / cover no-repeat;
   color: var(--paper);
 }
 .lp-closesec .lp-frame { position: relative; z-index: 1; }

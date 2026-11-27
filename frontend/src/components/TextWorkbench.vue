@@ -163,7 +163,7 @@ const props = defineProps({
   schema: { type: Object, default: () => ({}) },
   profiles: { type: Array, default: () => [] },
   profileValue: { type: String, default: 'general' },
-  languageValue: { type: String, default: 'zh' },
+  languageValue: { type: String, default: 'auto' },
   loading: { type: Boolean, default: false },
 })
 
@@ -173,13 +173,16 @@ const emit = defineEmits([
 ])
 
 const langOptions = [
+  { value: 'auto', label: '自动识别' },
   { value: 'zh', label: '中文' },
   { value: 'en', label: 'English' },
 ]
 const languageNote = computed(() =>
-  props.languageValue === 'en'
-    ? '英文走 spaCy 引擎（NER + 依存句法），需模型可用'
-    : '中文走自研词典 + 触发词规则，零模型依赖',
+  props.languageValue === 'auto'
+    ? '按正文 CJK 占比自动选引擎，结果里会标明实际用的语言'
+    : props.languageValue === 'en'
+      ? '英文走 spaCy 引擎（NER + 依存句法），需模型可用'
+      : '中文走自研词典 + 触发词规则，零模型依赖',
 )
 
 // 英文示例内置：后端 /api/samples 只提供中文样例，英文模式用本地一组。
@@ -198,13 +201,19 @@ const enSamples = [
   },
 ]
 const visibleSamples = computed(() =>
-  props.languageValue === 'en' ? enSamples : (props.samples || []),
+  props.languageValue === 'en'
+    ? enSamples
+    : props.languageValue === 'auto'
+      ? [...(props.samples || []), ...enSamples]
+      : (props.samples || []),
 )
 
 const abilityNote = computed(() =>
-  props.languageValue === 'en'
-    ? '英文走 spaCy 的 en_core_web_sm 模型：NER 识别实体，依存句法以动词为锚点确定主谓宾，再映射到与中文相同的 19 类关系。属于成熟的现成工具，体现工程选型判断。'
-    : '引擎为「词典 + 词法规则 + jieba 词性」的离线流水线：先分句，再按机构/地名后缀、人物上下文、职位线索识别实体，最后以触发词锚定句式模板（不含 BERT 类模型依赖），结果确定、可解释。',
+  props.languageValue === 'auto'
+    ? '自动识别按正文里中文字符与拉丁字母的占比判定（阈值 0.15），不调模型、结果可复现；判定细节随抽取结果一起返回。也可以手动切到中文或 English 覆盖。'
+    : props.languageValue === 'en'
+      ? '英文走 spaCy 的 en_core_web_sm 模型：NER 识别实体，依存句法以动词为锚点确定主谓宾，再映射到与中文相同的 19 类关系。属于成熟的现成工具，体现工程选型判断。'
+      : '引擎为「词典 + 词法规则 + jieba 词性」的离线流水线：先分句，再按机构/地名后缀、人物上下文、职位线索识别实体，最后以触发词锚定句式模板（不含 BERT 类模型依赖），结果确定、可解释。',
 )
 
 const opened = ref([])

@@ -131,7 +131,7 @@ export function buildMarkdown(result, meta) {
 
   lines.push(`# ${meta.title}`, '')
   lines.push(
-    `> 由中文关系抽取系统生成 · ${new Date().toLocaleString('zh-CN')}` +
+    `> 由文本关系抽取与信息甄别系统生成 · ${new Date().toLocaleString('zh-CN')}` +
       (meta.recordId ? ` · 记录 #${meta.recordId}` : ''),
     '',
   )
@@ -277,7 +277,7 @@ function cypherRelation(key) {
 export function buildCypher(result, meta) {
   const graph = graphNodes(result)
   const lines = [
-    `// 中文关系抽取系统 · ${meta.title}${meta.recordId ? ` · 记录 #${meta.recordId}` : ''}`,
+    `// 文本关系抽取与信息甄别系统 · ${meta.title}${meta.recordId ? ` · 记录 #${meta.recordId}` : ''}`,
     `// 生成于 ${new Date().toLocaleString('zh-CN')}，共 ${graph.nodes.length} 个实体 / ${graph.edges.length} 条关系`,
     '// 用 MERGE 保证重复导入不会产生重复节点',
     '',

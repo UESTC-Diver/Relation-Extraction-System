@@ -10,7 +10,7 @@
           <circle cx="20.2" cy="10.6" r="3.1" fill="#201e19" />
           <circle cx="13" cy="20" r="3.1" fill="#a8322a" />
         </svg>
-        <span class="vbar-name">中文关系抽取系统</span>
+        <span class="vbar-name">文本关系抽取与信息甄别系统</span>
       </a>
       <span class="vbar-sep" aria-hidden="true"></span>
       <span class="vbar-current">信息甄别</span>

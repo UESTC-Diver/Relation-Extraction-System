@@ -8,6 +8,7 @@ import time
 
 from .entity import Entity, EntityRecognizer
 from .explanation import attach as attach_explanations
+from .language import resolve_language
 from .lexicon import ENTITY_TYPE_ORDER, ENTITY_TYPES, apply_custom_triggers
 from .relation import RelationExtractor
 from .tokenizer import split_sentences, warmup
@@ -42,20 +43,30 @@ def analyze(
 
     custom_terms    —— 用户自定义词典，[{"text": ..., "type": ...}]
     custom_triggers —— 用户自定义关系触发词，{关系 key: [触发词...]}
-    language        —— "zh"（默认，自研规则引擎）/ "en"（spaCy 双引擎）
+    language        —— "zh"（默认，内部调用保持中文链路）/ "auto"（按 CJK
+                       占比自动选）/ "en"（spaCy 双引擎）
 
+    注意：默认值保留 "zh"，让信息甄别、评测、规则实验室等内部调用维持
+    原来的确定性中文链路；面向用户的抽取接口默认传 "auto" 做自动识别。
     双引擎：中文走自研词典 + 触发词规则（零模型依赖），英文走 spaCy 的
     NER + 依存句法。两者输出同一套 schema。english 模块在函数内懒加载，
     因此未装 spaCy 的环境里中文链路完全不受影响。
+    自动识别为确定性规则，判别细节写进结果的 language_detection 字段。
     """
-    if (language or "zh").strip().lower() in ("en", "english"):
+    lang, detection = resolve_language(language, text)
+    if lang == "en":
         from .english import analyze_en
-        return analyze_en(text)
+        result = analyze_en(text)
+        result["language_detection"] = detection
+        return result
 
     started = time.perf_counter()
     text = (text or "").strip()
     if not text:
-        return _empty_result(text, 0.0)
+        result = _empty_result(text, 0.0)
+        result["language"] = "zh"
+        result["language_detection"] = detection
+        return result
 
     # 自定义触发词按签名增量同步，同一套配置下是常数级空操作。
     # 索引是全局的，配置→抽取必须在同一把锁内完成，否则领域包并发会串味。
@@ -84,6 +95,8 @@ def analyze(
     elapsed = (time.perf_counter() - started) * 1000
     return attach_explanations({
         "text": text,
+        "language": "zh",
+        "language_detection": detection,
         "sentences": [
             {"index": s.index, "start": s.start, "end": s.end, "text": s.text}
             for s in sentences
