@@ -85,6 +85,7 @@ def evaluate(
     misses: list[dict] = []
     spurious: list[dict] = []
     skipped = 0
+    excluded_non_fact = 0
 
     for index, case in enumerate(cases):
         case_id = case.get("id") or f"case-{index + 1}"
@@ -93,7 +94,11 @@ def evaluate(
             _triple({"head": h, "relation": rel, "tail": t})
             for h, rel, t in (case.get("relations") or [])
         }
-        predicted = run_analyze(text)["relations"] if text.strip() else []
+        raw_predicted = run_analyze(text)["relations"] if text.strip() else []
+        # 只把「事实陈述」计入预测。否认句、传闻句、条件句里抽出的关系即使三元组
+        # 对得上，也不该算抽对——那正是「腾讯否认收购搜狗」被当成收购的由来。
+        predicted = [r for r in raw_predicted if (r.get("assertion") or "fact") == "fact"]
+        excluded_non_fact += len(raw_predicted) - len(predicted)
         pred = {_triple(r) for r in predicted}
         if pred_scope is not None:
             scope = pred_scope.get(case_id)
@@ -159,6 +164,7 @@ def evaluate(
         "cases": len(cases),
         "scoped": pred_scope is not None,
         "skipped_unjudged": skipped,
+        "excluded_non_fact": excluded_non_fact,
         "gold_total": total_tp + total_fn,
         "pred_total": total_tp + total_fp,
         "tp": total_tp, "fp": total_fp, "fn": total_fn,

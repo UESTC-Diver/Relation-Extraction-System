@@ -35,6 +35,8 @@
 | **语言自动识别**（2.5.0） | 工作台「语言」默认「自动识别」：按正文 **CJK 字符占比**（阈值 0.15）确定性判别该走中文规则引擎还是英文 spaCy 引擎，不调概率模型、同文本结果逐字一致；中文新闻里夹 CEO / Inc. 等拉丁缩写不会误判。判别细节（CJK 数、拉丁字母数、占比、阈值、判别方式）随结果写进 `language_detection` 字段，抽取完成提示里也标出「自动识别：中文 / English」；仍可手动切到 `zh` / `en` 覆盖，手动指定时 `language_detection=null`。内部链路（信息甄别、评测、规则实验室）默认仍走中文，零回归。接口 `language` 支持 `auto`（默认）/ `zh` / `en` |
 | **双引擎对比**（2.5.0） | 工作台「更多 → 双引擎对比」对话框：内置三组**中英对照样例**（同一件事的两种说法），分别调用两套引擎并排展示实体数、关系数与实际抽出的三元组，底部说明「同一套 schema」与「为什么中文自研、英文用现成工具」的取舍。英文模型未装时中文侧照常出结果、英文侧给可操作提示；窄屏自动改单列堆叠、无横向溢出 |
 | **抽取过程演绎**（2.6.0） | 工作台结果区上方「播放过程」：把一次已完成的抽取拆成 **原文 → 实体 → 关系 → 回到原文** 四阶段逐步演绎，每步 220ms、错开 60ms，展示的是当次结果的真实字段（实体类型用 `type_label`、三元组用 `head/relation/tail`、证据句按 `sentence_index` 回原文），不是编造的示例动画。四阶段也可点选单看，`aria-live` 播报当前步骤，`prefers-reduced-motion` 下直接跳到末步且去掉位移动画 |
+| **断言极性**（2.7.0） | 区分「事实陈述 / 否认 / 传闻 / 假设条件」四种断言性质：按**小句**而非整句判定（「双方签署合作协议。有媒体报道称将收购对方」前半是事实、后半是传闻，不能一起压掉），命中词与所在小句随结果返回（`assertion` / `assertion_label` / `assertion_cue` / `assertion_clause`），置信度按档位下调（否定 ×0.40、条件 ×0.58、传闻 ×0.62）；三元组表可按「仅事实 / 仅非事实」筛选，导出 CSV/Markdown/GraphML/Cypher 均带该字段。词表与信息甄别模块同源，同一个「网传」不会在甄别页是可疑、在抽取页却成了事实 |
+| **金标准扩充**（2.7.0） | 从 10 篇扩到 **32 篇 / 84 条三元组**：补齐此前从未被评测覆盖的 5 类关系（任命、位于、出生于、控股、隶属于），并加入 6 条**负例**（否认 / 传闻 / 条件 / 对比各若干）与 2 条「真事+传闻同句」的混合例。负例的正确行为是一条关系都不抽，抽出即计误抽；评测只把 `assertion=fact` 的预测计入分子，避免「抽对了个假命题」被算成正确答案。同一批里原 10 篇单独跑仍是 F1 0.99，扩集后为 **0.893**——这个落差本身就是过拟合的量度 |
 | **页面转场**（2.6.0） | 五个入口（`/`、`/demo`、`/app`、`/cases`、`/verify`）之间改走 SPA 导航：站内链接由 document 事件委托接管，只在同源、普通左键、无修饰键时 `pushState`，锚点与新窗口仍走浏览器原生行为；页面容器按路由 key 变化，用 `out-in` 做 200ms 位移 + 淡入，浏览器前进后退同样有转场。工作台初始化抽成可重入的 `ensureAppReady()`，转场落定后才拉示例与 schema，从首页点进工作台不会空面板 |
 | **文案口径**（2.6.0） | 首页首屏、meta description、`og:description` 与工作台输入提示统一为「中英双引擎 + 信息甄别」口径；删掉已经不实的「不用模型，不用联网」（英文引擎依赖 spaCy 模型），改为「默认本机处理，联网核验为可选增强」 |
 | **实体识别** | 识别人物、组织机构、地理位置、时间、金额、产品技术共 **6 类实体**，正文中彩色高亮 + hover 显示类型与置信度 + 侧栏实体清单，可按类型显隐 |
@@ -62,7 +64,7 @@
 | **信息甄别** | `/verify` 独立整页，面向「这段网传消息值不值得信」的日常问题。复用现有抽取能力把文本拆成可核查断言，用**确定性规则**分三层：**有据可查**（具体原句 + 高置信 + 无可疑措辞）、**存疑待核**（单方说法 / 缺关键要素）、**无从核实**（无事实内核 / 情绪化）。六类**可疑措辞**信号（绝对化、煽动、模糊信源、模糊时间、诱导点击、夸大断言）按句归因、指回命中原词。**真实新闻里词典没覆盖的实体也能查**：关系抽取为 0 时另走一条确定性「事实主张提取」，把 `2.25 万吨`、`一级 A 标准`、`24 小时` 这类数值/标准抽成可核查断言，不再误判成「无从核实」。每条结论给出可解释理由与原句，整体不盖「真 / 假」章。**判断链路完全本地、可复现、不落库**（不写 `records` / `relations`，不污染评测）。**联网核验为 opt-in 增强**：不勾选则完全离线、同文本结果逐字一致；勾选后走**零 key 免费通道**（`FreeProvider`：Bing 国际版网页搜索为主，维基百科 + DuckDuckGo 兜底，无需申请任何账号、开箱可用，Bing 跳转链接自动解码为真实 URL），也可配 `SERPER_API_KEY` / `TAVILY_API_KEY` 换成付费 provider（`VERIFY_PROVIDER=off|auto|free|serper|tavily`）。**检索围绕全文主体展开**：先用确定性规则从整段文字抓出地名 / 机构专名（如「青湖县」「青湖湿地保护区」），作为所有断言 query 的共享锚点，避免孤立数字被当成「增长率计算题」搜出一堆计算器。只送短句（≤60 字）不上传全文，证据按来源分级（官方 / 主流媒体 / 社区），并做**主题相关性校验**：只蹭到泛词的结果标为「不相关」、不计入印证、还要扣分，杜绝伪证据；识别疑似辟谣并标注。**结论明确二态**：查到就说「查到 N 条相关线索」并点名主体，查不到就说「未查到与「主体」直接相关的信息：检索到 N 条结果但主题不符，均未采信」，绝不含糊成「主题不相关未作为印证」。**联网失败一律静默降级**为「未外部核实」，不影响结论 |
 | **领域配置** | 界面可增删**自定义实体词条**（人物 / 机构 / 地名 / 产品等）与**自定义关系触发词**（给 19 类内置规则追加领域说法），两者都是保存后下一次抽取立即生效，无需改代码或重启；可保存/回滚配置版本，句式模板仍由代码维护 |
 | **领域包** | `general / finance / legal` 三套领域包，以「额外词条 + 额外触发词」叠加在固定 19 类关系之上：财经包补「吃下 / 举牌 / 战投 / 对赌」等 18 个说法，法律包补「仲裁 / 立案 / 达成和解」等 11 个。工作台、批量、后台任务、规则试跑都可选包，**记录会存下当时用的包**，历史与报告能说明「这条是用什么抽的」；`general` 为空集，默认路径与 1.4.0 逐字节等价 |
-| **效果评测** | 内置 10 段人工标注金标准集，也可以**用自己的标注集评测**；CLI（`eval/run_eval.py --json`）与界面评测台共用同一套 `app/nlp/evaluation.py` 算法，输出整体与分类型指标及漏抽/误抽明细，界面侧额外保留历史回归曲线。用自己的标注集时给**两个口径**：主指标只统计「人已经判过的范围」，同时给出「把未判当作漏抽」的下界与标注完整度——标注没做完时单一数字一定虚高，报区间比报一个好数诚实 |
+| **效果评测** | 内置 **32 段**人工标注金标准集（含 6 条否认/传闻/条件负例），也可以**用自己的标注集评测**；CLI（`eval/run_eval.py --json`）与界面评测台共用同一套 `app/nlp/evaluation.py` 算法，输出整体与分类型指标及漏抽/误抽明细，界面侧额外保留历史回归曲线。用自己的标注集时给**两个口径**：主指标只统计「人已经判过的范围」，同时给出「把未判当作漏抽」的下界与标注完整度——标注没做完时单一数字一定虚高，报区间比报一个好数诚实 |
 | **交互体验** | 内置 4 条中文新闻示例（一键切换并自动抽取）、空状态引导、字数计数、错误提示、响应式布局（≤1120px 单列，≤720px 顶栏与页签自动换行且 390px 无横向溢出）；结果与证据双向联动（表格→原文定位、图谱→三元组下钻、统计→原文定位）；结果就绪后左栏自动收窄为摘要卡；长文本按 40 块分批挂载并配抽取骨架屏；图谱超过 80 个节点自动降级为环形布局并关闭力导向动画与标签 |
 
 ### 界面截图
@@ -265,6 +267,7 @@
 │  │  │  ├─ profiles.py       # 领域包 general / finance / legal 的词条与触发词叠加
 │  │  │  ├─ english.py        # 英文引擎（2.4.0）：spaCy NER + 依存句法，同 schema 输出
 │  │  │  ├─ language.py       # 语言自动识别（2.5.0）：CJK 占比确定性判别，auto 分流
+│  │  │  ├─ polarity.py       # 断言极性（2.7.0）：小句级判定事实/否定/传闻/条件，词表与 verify.py 同源
 │  │  │  └─ pipeline.py       # analyze(text, custom_terms, custom_triggers, language) 双引擎出口
 │  │  └─ routers/
 │  │     ├─ extract.py        # /api/extract、/extract/file、/extract/batch*、/api/health
@@ -283,7 +286,7 @@
 │  ├─ .env.example            # 生产配置清单与最小 checklist（代码不自动加载 .env）
 │  ├─ devtools/check.py       # 离线自检脚本：对内置示例跑抽取并打印结果
 │  ├─ eval/
-│  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
+│  │  ├─ gold.json            # 32 段人工标注金标准集（84 条三元组，19 类关系全覆盖，含 6 条负例）
 │  │  ├─ run_eval.py          # CLI 入口，调用 nlp/evaluation.py（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
 │  ├─ tests/                  # pytest 回归测试（187 条，临时库隔离）
@@ -344,7 +347,7 @@
 │  ├─ public/                 # favicon.svg、robots.txt、fonts/（本地西文字体）、media/
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
-├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张 + 1.6.0 两张 + 2.1.0 四张 + 2.3.0 九张 + 2.4.0 两张 + 2.5.0 六张 + 2.6.0 四张，实际截图
+├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张 + 1.6.0 两张 + 2.1.0 四张 + 2.3.0 九张 + 2.4.0 两张 + 2.5.0 六张 + 2.6.0 四张 + 2.7.0 四张，实际截图
 └─ README.md
 ```
 
@@ -379,7 +382,7 @@ python -m spacy download en_core_web_sm
 国内网络下载模型卡住时，可改用镜像直装 wheel（命令见 `requirements-en.txt` 注释）。未装模型时 `health` 报 `engines.en.available=false`，英文抽取返回 503 提示，**中文与其它功能完全不受影响**——两个引擎按语言分流，互不拖累。
 
 - 接口文档：<http://127.0.0.1:8000/docs>
-- 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `2.6.0`）
+- 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `2.7.0`）
 - 只读报告示例：<http://127.0.0.1:8000/report/12>（记录存在时返回完整离线报告页）
 
 ### 3A. 前端开发模式（热更新）
@@ -436,7 +439,11 @@ python eval/run_eval.py            # 表格报告 + 漏抽/误抽明细
 python eval/run_eval.py --json     # 机读格式，便于接入 CI
 ```
 
-在 `eval/gold.json` 的 10 段人工标注文本（1 283 字 / 48 条三元组 / 14 类关系）上计算 Precision / Recall / F1。当前结果 **P 0.960 · R 1.000 · F1 0.980 · Macro-F1 0.986**（机制改进前的基线为 F1 0.769，见第九节），完整的分类型指标与错误分析见 [`backend/eval/REPORT.md`](backend/eval/REPORT.md)。
+在 `eval/gold.json` 的 **32 段人工标注文本（84 条三元组 / 19 类关系全覆盖）**上计算 Precision / Recall / F1。当前结果 **P 0.947 · R 0.845 · F1 0.893 · Macro-F1 0.860**，完整的分类型指标与错误分析见 [`backend/eval/REPORT.md`](backend/eval/REPORT.md)。
+
+**为什么分数比旧版低，反而是进步**：2.6.0 之前这个集只有 10 段，且与规则同源，F1 报 0.98。2.7.0 把同样这 10 段单独跑仍然接近满分（P 0.980 / R 1.000 / F1 0.990），但补上 22 段新文本——含此前从未覆盖的 5 类关系、6 条否认/传闻/条件负例、2 条真事与传闻同句的混合例——之后掉到 0.893。**同一个系统在两个集上的差距，量出来的正是过拟合的程度**；只报旧集上的 0.98 等于自欺。扩集过程中还直接抓出一个真 bug：「腾讯否认收购搜狗」会抽出「腾讯 收购 搜狗」且置信度 0.89，与肯定句 0.94 几乎无差别。
+
+**已知限制（写在明处的失败模式）**：① 「A隶属于B，位于C」这类句式，第二小句的主语会继承成最近的实体 B 而不是话题主语 A（`c15`/`c30` 各有 1 条误抽），属指代消解范畴，本轮未动；② 词典覆盖偏商业/科技，文化机构与历史人物类文本召回偏低（如「西湖」未收录为地名，`c13` 漏抽 1 条）——没有为了这个评测集去补具体词条，否则又变成对着答案调规则。
 
 工作台顶栏「更多 → 效果评测」是同一套算法的界面入口，额外保留每次运行的 F1 回归曲线与漏抽/误抽明细，也支持粘贴自定义金标准跑单次评测；`POST /api/eval` 与 CLI 都调用 `app/nlp/evaluation.py`，不会出现两套 P/R/F1 口径。
 
@@ -446,8 +453,8 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 cd backend
 python -m pip install -r requirements-dev.txt
 python -m ruff check app tests   # lint 门禁
-python -m pytest -q              # 187 passed
-python eval/run_eval.py --json   # F1 ≥ 0.95
+python -m pytest -q              # 223 passed
+python eval/run_eval.py --json   # F1 ≥ 0.85（当前 0.893）
 
 cd ../frontend
 npm install
@@ -568,8 +575,8 @@ npm run build
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 健康检查：版本（2.6.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限、联网甄别是否可用（`verify_external`，默认零 key 免费通道为 true，不泄露 key）、双引擎状态（`engines.zh` / `engines.en`，`engine=dual-engine` 表示两引擎都可用） |
-| `POST` | `/api/extract` | 请求体 `{text, title, save, profile, language}`，返回 `{record_id, result}`；`profile` 取 `general / finance / legal`，`language` 取 `zh`（默认，自研规则引擎）/ `en`（spaCy 引擎），结果里回显 `profile` / `profile_label` / `language`，每条关系带 `explanation`；英文模型缺失返回 503、并发超额返回 429 |
+| `GET` | `/api/health` | 健康检查：版本（2.7.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限、联网甄别是否可用（`verify_external`，默认零 key 免费通道为 true，不泄露 key）、双引擎状态（`engines.zh` / `engines.en`，`engine=dual-engine` 表示两引擎都可用） |
+| `POST` | `/api/extract` | 请求体 `{text, title, save, profile, language}`，返回 `{record_id, result}`；`profile` 取 `general / finance / legal`，`language` 取 `auto`（默认）/ `zh`（自研规则引擎）/ `en`（spaCy 引擎），结果里回显 `profile` / `profile_label` / `language` / `language_detection`，每条关系带 `explanation` 与断言极性四件套 `assertion`（fact/negated/rumored/conditional）/ `assertion_label` / `assertion_cue` / `assertion_clause`，`stats` 里另有 `fact_relation_count` / `non_fact_relation_count` / `assertion_counts`；英文模型缺失返回 503、并发超额返回 429 |
 | `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text/.pdf/.docx`（≤2MB），可选 `profile` / `language` 字段（query 参数）；纯文本自动识别编码，PDF / DOCX 走本地解析库 |
 | `POST` | `/api/extract/batch` | 请求体 `{items: [{text, title}], save, profile}`，最多 20 篇；返回逐篇摘要 + 跨文档聚合，单篇失败不打断 |
 | `POST` | `/api/extract/batch/files` | `multipart/form-data` 多文件批量（字段名 `files`），编码逐个识别 |
@@ -869,14 +876,15 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。
 - `npm run build` 会清空 `frontend/dist/`，截图辅助文件之类的临时内容不要留在 `dist/` 里。
 
-### 交付基线（2026-11-27 实测，2.6.0）
+### 交付基线（2026-11-27 实测，2.7.0）
 
 | 项目 | 结论 |
 | --- | --- |
-| 接口回归 | `python -m pytest -q` → **207 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0 + 3 条 NLP 点状回归 + 15 条 2.4.0 + 17 条 2.5.0 + 3 条 2.6.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
+| 接口回归 | `python -m pytest -q` → **223 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0 + 3 条 NLP 点状回归 + 15 条 2.4.0 + 17 条 2.5.0 + 3 条 2.6.0 + 16 条 2.7.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
 | 静态检查 | `python -m ruff check app tests` → **All checks passed**；前端 `npm run lint` → **clean** |
-| CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.95`）；frontend 跑 lockfile 校验 + `npm ci && npm run lint && npm test && npm run build` |
-| 效果评测 | P 0.960 / R 1.000 / **F1 0.980** / Macro-F1 0.986，与第九节一致、本轮未回退 |
+| CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.85`；2.7.0 起金标准含负例，真实基线 0.893，门槛按真实水平设，不按虚高的旧数字设）；frontend 跑 lockfile 校验 + `npm ci && npm run lint && npm test && npm run build` |
+| 效果评测 | **32 篇 / 84 条三元组：P 0.947 / R 0.845 / F1 0.893 / Macro-F1 0.860**。同一批用例里的原 10 篇单独跑仍是 **P 0.980 / R 1.000 / F1 0.990**——同样代码在旧集上几乎满分、扩集后掉到 0.893，正说明旧数字是「金标准与规则同源」造成的过拟合；新数字才是面对没见过的句式时的真实水平 |
+| 断言极性 | 2.7.0：`polarity.judge()` 按小句判定，优先级 否定 > 条件 > 传闻 > 事实；6 条纯负例（否认 / 传闻 / 条件 / 对比）**误抽 0 条**，2 条「真事+传闻同句」混合例只压掉传闻那半句、真事照常抽出（证明没有过度压制）；否定关系置信度由 0.89 降到 0.31（×0.40），传闻降到 0.57（×0.62）；评测只把 `assertion=fact` 计入预测，本轮因此排除 6 条非事实断言；英文引擎同字段（`Tencent reportedly plans to acquire...` 判传闻、`denied that it acquired...` 判否定） |
 | 生产构建 | `npm run build` 通过、**无体积警告**。首页入口 **283.72 KB（gzip 107.86 KB）** + 基础 CSS 42.04 KB（gzip 8.01 KB），**完全不请求 Element Plus**；`/demo` 独立 chunk 33.86 KB（gzip 9.22 KB，含 4 篇样例数据），只在访问该路由时下载；工作台 `element-setup` JS 288.32 KB / CSS 365.00 KB，图谱 chunk 443.34 KB，规则实验室 14.91 KB（gzip 6.41 KB，含学规则页签）、三元组表格 16.17 KB、标注台 10.04 KB（gzip 4.25 KB）、案卷页 17.57 KB（gzip 7.31 KB） |
 | 安全集 | CORS 默认白名单（本机 8000 / Vite 5173）、per-IP 滑动窗口限流（默认 120 次/分）、全局请求体上限 4 MB、上传扩展名 + magic bytes 双检、PDF ≤60 页 + 解析硬超时、DOCX 解压体积上限、结构化 JSON 访问日志 + `X-Request-ID`；只读页 `noindex` / `no-referrer` / `private, no-store`，分享链 HMAC 签名 + 有效期 |
 | 复核闭环 | `draft → in_review → final` 状态机，定稿必须走 `/finalize` 写不可变快照并锁定关系 / 实体写入（409），解锁需显式退回 `in_review`；结论按三元组内容指纹对齐，改了实体自动失效；结论写进单文件 HTML 与只读报告 |

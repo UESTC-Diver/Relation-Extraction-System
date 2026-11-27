@@ -83,11 +83,15 @@ def test_review_queue_returns_low_confidence(client):
 
 
 def test_eval_endpoint_and_history(client):
-    assert client.get("/api/eval/gold").json()["total"] == 10
+    from app.nlp.evaluation import load_gold
+
+    gold_total = len(load_gold())
+    assert gold_total >= 30
+    assert client.get("/api/eval/gold").json()["total"] == gold_total
     result = client.post("/api/eval", json={"save": True}).json()
     assert result["run_id"] is not None
     report = result["report"]
-    assert report["cases"] == 10
+    assert report["cases"] == gold_total
     assert 0 <= report["f1"] <= 1
     assert "per_relation" in report and "misses" in report
 

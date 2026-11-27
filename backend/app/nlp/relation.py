@@ -114,6 +114,12 @@ class Triple:
     # 仅用于「为什么抽出来」的展示，不参与去重 / 排序 / 评测
     score_parts: dict = field(default_factory=dict)
     matched_template: str = ""
+    # 断言极性：这条关系所在小句是在陈述事实，还是否认 / 传闻 / 假设。
+    # 由 polarity.judge() 在流水线末端填充，抽取器本身不关心。
+    assertion: str = "fact"
+    assertion_label: str = "事实陈述"
+    assertion_cue: str = ""
+    assertion_clause: str = ""
 
     def as_dict(self) -> dict:
         rule = RELATION_MAP[self.key]
@@ -136,6 +142,10 @@ class Triple:
             "rule_base": self.rule_base,
             "score_parts": self.score_parts,
             "matched_template": self.matched_template,
+            "assertion": self.assertion,
+            "assertion_label": self.assertion_label,
+            "assertion_cue": self.assertion_cue,
+            "assertion_clause": self.assertion_clause,
         }
 
 

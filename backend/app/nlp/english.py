@@ -29,6 +29,7 @@ from typing import Any
 
 from .entity import canonical_name
 from .lexicon import ENTITY_TYPE_ORDER, ENTITY_TYPES, RELATION_MAP
+from .polarity import judge_en
 
 # spaCy NER label -> 本项目实体类型
 # GPE（国家/城市）与 LOC（山川）都归到 LOC；日期走 DATE/TIME -> TIME；
@@ -276,6 +277,9 @@ def _relation_dict(
     sentence_index: int, rule_base: str,
 ) -> dict:
     rule = RELATION_MAP[key]
+    # 与中文同源：英文也有「否认 / 传闻 / 条件」三档，只是词表不同。
+    verdict = judge_en(evidence)
+    confidence = 0.93 * verdict["penalty"]
     return {
         "head": head["text"],
         "head_canonical": canonical_name(head["text"], head["type"]),
@@ -288,13 +292,20 @@ def _relation_dict(
         "relation": key,
         "relation_label": rule.label,
         "relation_color": rule.color,
-        "confidence": 0.93,
+        "confidence": round(max(0.15, confidence), 2),
         "evidence": evidence.strip(),
         "sentence_index": sentence_index,
         "trigger": trigger,
         "rule_base": rule_base,
-        "score_parts": {"base": 0.93, "distance_penalty": 0, "adjust": 0},
+        "score_parts": {
+            "base": 0.93, "distance_penalty": 0, "adjust": 0,
+            **({"polarity": round(verdict["penalty"], 2)} if verdict["penalty"] < 1 else {}),
+        },
         "matched_template": "dependency_anchor",
+        "assertion": verdict["assertion"],
+        "assertion_label": verdict["assertion_label"],
+        "assertion_cue": verdict["assertion_cue"],
+        "assertion_clause": verdict["assertion_clause"],
         "language": "en",
     }
 
@@ -458,6 +469,11 @@ def analyze_en(text: str) -> dict:
         relation_type_counts[r["relation"]] = relation_type_counts.get(r["relation"], 0) + 1
 
     elapsed = (time.perf_counter() - started) * 1000
+    assertion_counts: dict[str, int] = {}
+    for r in relations:
+        key = r.get("assertion") or "fact"
+        assertion_counts[key] = assertion_counts.get(key, 0) + 1
+    fact_count = assertion_counts.get("fact", 0)
     return {
         "text": text,
         "language": "en",
@@ -474,6 +490,9 @@ def analyze_en(text: str) -> dict:
             "relation_count": len(relations),
             "unique_entity_count": len({e["text"] for e in entities}),
             "elapsed_ms": round(elapsed, 1),
+            "fact_relation_count": fact_count,
+            "non_fact_relation_count": len(relations) - fact_count,
+            "assertion_counts": assertion_counts,
         },
     }
 
@@ -495,5 +514,8 @@ def _empty_result(text: str, elapsed: float) -> dict:
             "relation_count": 0,
             "unique_entity_count": 0,
             "elapsed_ms": elapsed,
+            "fact_relation_count": 0,
+            "non_fact_relation_count": 0,
+            "assertion_counts": {},
         },
     }

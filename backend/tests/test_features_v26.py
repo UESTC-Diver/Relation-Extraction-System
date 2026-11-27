@@ -9,9 +9,12 @@ from app import main
 
 
 def test_version_bumped(client):
-    assert re.match(r"^2\.6\.\d+$", main.VERSION)
+    """2.6.0 起引入页面转场与过程演绎。断言「不低于 2.6.0」而不是写死版本号，
+    否则每发一版都要来改这行。"""
+    assert re.match(r"^\d+\.\d+\.\d+$", main.VERSION)
+    assert tuple(int(x) for x in main.VERSION.split(".")) >= (2, 6, 0)
     health = client.get("/api/health").json()
-    assert health["version"] == main.VERSION == "2.6.0"
+    assert health["version"] == main.VERSION
 
 
 def test_spa_routes_still_serve_index(client):

@@ -80,6 +80,8 @@ export function buildCsv(result, meta) {
     'tail_canonical',
     'tail_type',
     'confidence',
+    'assertion',
+    'assertion_label',
     'trigger',
     'evidence',
     'rule_base',
@@ -94,6 +96,8 @@ export function buildCsv(result, meta) {
     r.tail_canonical || r.tail,
     r.tail_type,
     r.confidence,
+    r.assertion || 'fact',
+    r.assertion_label || '事实陈述',
     r.trigger || '',
     r.evidence || '',
     r.rule_base || '',
@@ -162,21 +166,34 @@ export function buildMarkdown(result, meta) {
     lines.push(
       '## 关系三元组',
       '',
-      '| 头实体 | 关系 | 尾实体 | 触发词 | 置信度 | 来源 |',
-      '| --- | --- | --- | --- | --- | --- |',
+      '| 头实体 | 关系 | 尾实体 | 断言性质 | 触发词 | 置信度 | 来源 |',
+      '| --- | --- | --- | --- | --- | --- | --- |',
     )
     for (const r of relations) {
+      const assertion =
+        r.assertion && r.assertion !== 'fact'
+          ? `**${mdCell(r.assertion_label)}**${r.assertion_cue ? `（${mdCell(r.assertion_cue)}）` : ''}`
+          : '事实陈述'
       lines.push(
         `| ${mdCell(r.head)} | ${mdCell(r.relation_label || r.relation)} | ` +
-          `${mdCell(r.tail)} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} | ` +
+          `${mdCell(r.tail)} | ${assertion} | ${mdCell(r.trigger || '—')} | ${r.confidence ?? '—'} | ` +
           `${mdCell(ruleLabel(r.rule_base))} |`,
       )
     }
     lines.push('')
 
+    const nonFact = relations.filter((r) => r.assertion && r.assertion !== 'fact')
+    if (nonFact.length) {
+      lines.push(
+        '> 其中以上标记的关系来自否认、传闻或条件句，不是事实陈述，使用时请回到原文核对。',
+        '',
+      )
+    }
+
     lines.push('## 抽取证据', '')
     for (const r of relations) {
-      lines.push(`- **${r.head} — ${r.relation_label || r.relation} — ${r.tail}**`)
+      const mark = r.assertion && r.assertion !== 'fact' ? `（${r.assertion_label}）` : ''
+      lines.push(`- **${r.head} — ${r.relation_label || r.relation} — ${r.tail}**${mark}`)
       if (r.evidence) lines.push(`  > ${r.evidence}`)
     }
     lines.push('')
@@ -233,6 +250,7 @@ export function buildGraphml(result, meta) {
     '  <key id="d3" for="edge" attr.name="label" attr.type="string"/>',
     '  <key id="d4" for="edge" attr.name="confidence" attr.type="double"/>',
     '  <key id="d5" for="edge" attr.name="evidence" attr.type="string"/>',
+    '  <key id="d6" for="edge" attr.name="assertion" attr.type="string"/>',
     '  <graph id="G" edgedefault="directed">',
   ]
   for (const n of graph.nodes) {
@@ -248,6 +266,7 @@ export function buildGraphml(result, meta) {
     lines.push(`      <data key="d3">${xmlEscape(r.relation_label || r.relation)}</data>`)
     lines.push(`      <data key="d4">${Number(r.confidence ?? 0).toFixed(2)}</data>`)
     lines.push(`      <data key="d5">${xmlEscape(r.evidence)}</data>`)
+    lines.push(`      <data key="d6">${xmlEscape(r.assertion || 'fact')}</data>`)
     lines.push('    </edge>')
   })
   lines.push('  </graph>', '</graphml>')
@@ -297,6 +316,7 @@ export function buildCypher(result, meta) {
         `SET r.label = ${cypherString(r.relation_label || r.relation)}, ` +
         `r.confidence = ${Number(r.confidence ?? 0).toFixed(2)}, ` +
         `r.evidence = ${cypherString(r.evidence)}, ` +
+        `r.assertion = ${cypherString(r.assertion || 'fact')}, ` +
         `r.trigger = ${cypherString(r.trigger)};`,
     )
   }

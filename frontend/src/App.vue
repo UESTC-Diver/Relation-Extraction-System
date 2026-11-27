@@ -143,7 +143,17 @@
           <div><dt>字数</dt><dd>{{ result.stats.char_count }}</dd></div>
           <div><dt>句子</dt><dd>{{ result.stats.sentence_count }}</dd></div>
           <div><dt>实体</dt><dd>{{ result.stats.entity_count }}</dd></div>
-          <div><dt>关系</dt><dd>{{ result.stats.relation_count }}</dd></div>
+          <div>
+            <dt>关系</dt>
+            <dd>
+              {{ result.stats.relation_count }}
+              <span
+                v-if="result.stats.non_fact_relation_count"
+                class="cp-nonfact"
+                :title="`其中 ${result.stats.non_fact_relation_count} 条来自否认 / 传闻 / 条件句，不是事实陈述`"
+              >含 {{ result.stats.non_fact_relation_count }} 非事实</span>
+            </dd>
+          </div>
         </dl>
         <button class="btn-quiet cp-edit" type="button" @click="toggleCompact(false)">
           <el-icon :size="13"><EditPen /></el-icon>
@@ -955,6 +965,12 @@ function applyResult(payload, recordId = null) {
  * 执行抽取。save=false 时只在内存中预览，不写历史记录 —— 页面初始化
  * 自动加载示例走的就是这条路，避免每次刷新都往库里塞一条重复数据。
  */
+/** 完成提示里补一句「有几条不是事实」，否则关系数会虚高。 */
+function nonFactHint(payload) {
+  const n = payload?.stats?.non_fact_relation_count || 0
+  return n ? `（其中 ${n} 条为否定 / 传闻 / 条件句，非事实）` : ''
+}
+
 async function runExtract({ save = true } = {}) {
   if (!text.value.trim()) {
     ElMessage.warning('请先输入或上传一段文本')
@@ -977,10 +993,13 @@ async function runExtract({ save = true } = {}) {
     applyResult(res.result, res.record_id)
     const usedLang = res.result.language === 'en' ? 'English' : '中文'
     const langHint = language.value === 'auto' ? `（自动识别：${usedLang}）` : ''
-    liveMessage.value = `抽取完成：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系${langHint}`
+    liveMessage.value =
+      `抽取完成：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系` +
+      nonFactHint(res.result) + langHint
     if (save) {
       ElMessage.success(
-        `已存入历史 #${res.record_id}：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系${langHint}`,
+        `已存入历史 #${res.record_id}：${res.result.stats.entity_count} 个实体，${res.result.stats.relation_count} 条关系` +
+          nonFactHint(res.result) + langHint,
       )
     }
   } catch (err) {
@@ -1585,6 +1604,15 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+}
+
+.cp-nonfact {
+  display: block;
+  margin-top: 1px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--warn);
+  cursor: help;
 }
 
 .cp-edit {

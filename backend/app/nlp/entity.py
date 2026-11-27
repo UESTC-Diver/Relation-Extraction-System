@@ -21,6 +21,7 @@ from .lexicon import (
     ENTITY_TYPES,
     LOC_GAZETTEER,
     ORG_GAZETTEER,
+    ORG_LEFT_RELATION_PREFIXES,
     PERSON_GAZETTEER,
     PERSON_SURNAMES,
     PRODUCT_GAZETTEER,
@@ -68,13 +69,19 @@ EN_STOPWORDS = {
 }
 
 # 机构 / 地点后缀（按长度倒序判断，保证 "股份有限公司" 优先于 "公司"）
+# 注意：这份词表与 lexicon.ORG_SUFFIX_RE（正则版）是同一套后缀的两份写法，
+# 增删后缀时两处都要改，否则「识别得到」和「能向前扩展」会不一致。
 ORG_SUFFIX_WORDS = [
     "股份有限公司", "有限责任公司", "有限公司", "集团公司", "集团", "控股",
     "公司", "银行", "证券", "保险", "基金", "信托", "大学", "学院", "研究院",
     "研究所", "科学院", "医院", "管理局", "监督局", "委员会", "协会", "学会",
     "联合会", "基金会", "事务所", "实验室", "电视台", "广播电台", "日报",
     "晚报", "商报", "时报", "通讯社", "出版社", "交易所",
+    "博物院", "博物馆", "图书馆", "美术馆", "档案馆", "剧院", "乐团",
 ]
+
+# 刻意不收「法院 / 检察院」：它们是诉讼发生的地点，不是诉讼主体。
+# 收进来会让「腾讯在北京知识产权法院起诉字节」抽成「法院起诉字节」。
 
 LOC_SUFFIX_WORDS = ["特别行政区", "自治区", "自治州", "省", "市", "县", "镇", "州", "区"]
 
@@ -312,6 +319,13 @@ class EntityRecognizer:
                 break
             text, start = merged, prev.start
             j -= 1
+        # 关系词被吞进机构名时剥掉：「隶属于中国科学院」→「中国科学院」。
+        # 只处理左侧，且只剥这些成句语义的前缀，名字中间的「控股」不动。
+        for prefix in ORG_LEFT_RELATION_PREFIXES:
+            if text.startswith(prefix) and len(text) > len(prefix) + 3:
+                start += len(prefix)
+                text = text[len(prefix):]
+                break
         return start, tok.end, text
 
     def _context_entities(self, text: str) -> list[Entity]:

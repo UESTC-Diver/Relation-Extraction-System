@@ -39,7 +39,31 @@ describe('buildCsv', () => {
 describe('buildMarkdown', () => {
   it('关系表包含来源列并翻译 manual', () => {
     const md = buildMarkdown(RESULT, META).content
-    expect(md).toContain('| 头实体 | 关系 | 尾实体 | 触发词 | 置信度 | 来源 |')
+    expect(md).toContain('| 头实体 | 关系 | 尾实体 | 断言性质 | 触发词 | 置信度 | 来源 |')
     expect(md).toContain('人工校正')
+  })
+
+  it('非事实断言在 Markdown 里被标出来', () => {
+    const withRumor = {
+      ...RESULT,
+      relations: [
+        ...RESULT.relations,
+        {
+          head: '腾讯', relation: 'acquire', relation_label: '收购', tail: '搜狗',
+          confidence: 0.57, trigger: '收购', evidence: '有媒体报道称腾讯将收购搜狗。',
+          rule_base: 'trigger', assertion: 'rumored', assertion_label: '传闻 / 转述',
+          assertion_cue: '媒体报道称',
+        },
+      ],
+    }
+    const md = buildMarkdown(withRumor, META).content
+    expect(md).toContain('**传闻 / 转述**')
+    expect(md).toContain('不是事实陈述')
+  })
+
+  it('CSV 带 assertion 列', () => {
+    const csv = buildCsv(RESULT, META).content
+    expect(csv).toContain('assertion')
+    expect(csv).toContain('事实陈述')
   })
 })

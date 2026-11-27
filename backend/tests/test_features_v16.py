@@ -263,12 +263,20 @@ def test_full_annotation_matches_strict(client):
 
 
 def test_builtin_eval_unchanged(client):
-    """不传 set_id 时行为必须与 1.5.0 完全一致。"""
+    """不传 set_id 时行为必须与 1.5.0 完全一致。
+
+    注意：2.7.0 把金标准从 10 篇扩到 32 篇，并加入否认 / 传闻 / 条件负例与
+    此前从未覆盖的 5 类关系，F1 因此从 0.98 降到 0.85 附近。这个下降是预期内的
+    —— 旧的 0.98 建立在「只有 10 篇同源样例」之上，不代表真实能力。阈值随之下调，
+    但不允许再掉到 0.8 以下。
+    """
     report = client.post("/api/eval", json={"save": False}).json()["report"]
     assert report["dataset"] == "builtin"
     assert report["coverage"] == 1.0
     assert report["scoped"] is False
-    assert report["f1"] >= 0.95
+    assert report["f1"] >= 0.80
+    assert report["cases"] >= 30
+    assert "excluded_non_fact" in report
     assert "strict" not in report
 
 

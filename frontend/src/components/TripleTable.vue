@@ -49,6 +49,29 @@
           </button>
         </div>
 
+        <div
+          v-if="nonFactCount"
+          class="conf-seg assertion-seg"
+          role="group"
+          aria-label="按断言性质筛选"
+        >
+          <button
+            v-for="a in ASSERTION_FILTERS"
+            :key="a.value"
+            class="conf-item"
+            :class="{ 'is-active': assertionFilter === a.value }"
+            type="button"
+            :aria-pressed="assertionFilter === a.value ? 'true' : 'false'"
+            :title="a.title"
+            @click="assertionFilter = a.value"
+          >
+            {{ a.label }}
+            <b v-if="a.value !== 'all'" class="seg-num">
+              {{ a.value === 'fact' ? factCount : nonFactCount }}
+            </b>
+          </button>
+        </div>
+
         <button
           v-if="entityFilter"
           class="filter-chip"
@@ -108,6 +131,7 @@
         height="100%"
         :empty-text="emptyText"
         row-key="_rid"
+        :row-class-name="rowClass"
       >
         <el-table-column type="expand" width="30">
           <template #default="{ row }">
@@ -198,6 +222,12 @@
           <template #default="{ row }">
             <span class="rel-pill" :style="pillStyle(row.relation)">{{ row.relation_label }}</span>
             <span v-if="row.rule_base === 'manual'" class="manual-tag">人工</span>
+            <span
+              v-if="row.assertion && row.assertion !== 'fact'"
+              class="assertion-tag"
+              :class="`is-${row.assertion}`"
+              :title="assertionTitle(row)"
+            >{{ row.assertion_label }}</span>
             <span
               v-if="reviewOf(row)"
               :style="reviewMarkStyle(reviewOf(row))"
@@ -415,6 +445,35 @@ const CONF_PRESETS = [
   { value: 0.9, label: '≥ 0.90' },
 ]
 
+// 断言性质筛选。没有非事实断言时不渲染这一组，避免多出一排永远为 0 的按钮。
+const assertionFilter = ref('all')
+const ASSERTION_FILTERS = [
+  { value: 'all', label: '全部', title: '事实与非事实断言一起看' },
+  { value: 'fact', label: '仅事实', title: '只保留「事实陈述」的关系' },
+  { value: 'non_fact', label: '仅非事实', title: '只保留否认 / 传闻 / 条件句里抽出的关系' },
+]
+
+const factCount = computed(
+  () => props.relations.filter((r) => (r.assertion || 'fact') === 'fact').length,
+)
+const nonFactCount = computed(() => props.relations.length - factCount.value)
+
+function assertionTitle(row) {
+  const cue = row.assertion_cue ? `「${row.assertion_cue}」` : ''
+  const clause = row.assertion_clause ? `，依据：${row.assertion_clause}` : ''
+  const why = {
+    negated: `这句话在否认或否证该关系，不应作为事实使用${cue ? `（命中${cue}）` : ''}`,
+    rumored: `这句话只是转述传闻或未证实消息，不能当作事实${cue ? `（命中${cue}）` : ''}`,
+    conditional: `这句话是假设或条件句，关系尚未发生${cue ? `（命中${cue}）` : ''}`,
+  }[row.assertion] || '非事实陈述'
+  return why + clause
+}
+
+function rowClass({ row }) {
+  const a = row.assertion || 'fact'
+  return a === 'fact' ? '' : `row-assertion row-${a}`
+}
+
 const entityMap = computed(() => {
   const map = {}
   for (const t of props.schema.entity_types || []) map[t.key] = t
@@ -571,6 +630,11 @@ const filtered = computed(() => {
     .filter((r) => {
       if (picked.value.length && !picked.value.includes(r.relation)) return false
       if (r.confidence < minConf.value) return false
+      // 非事实断言（否认 / 传闻 / 条件）单独成档：默认与事实一起看，
+      // 但可以一键只看事实，或者反过来专门检查被降级的那几条。
+      const isFact = (r.assertion || 'fact') === 'fact'
+      if (assertionFilter.value === 'fact' && !isFact) return false
+      if (assertionFilter.value === 'non_fact' && isFact) return false
       if (ef && r.head !== ef.name && r.tail !== ef.name) {
         if (r.head_canonical !== ef.name && r.tail_canonical !== ef.name) return false
       }
@@ -912,6 +976,51 @@ function exportCsv() {
   color: #7c3aed;
   background: #7c3aed12;
   border: 1px solid #7c3aed33;
+}
+
+/* ---------- 断言性质：非事实的三元组要一眼能看出来 ---------- */
+.assertion-seg .seg-num {
+  margin-left: 3px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.assertion-tag {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: var(--r-xs);
+  font-size: 10px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.assertion-tag.is-negated {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+.assertion-tag.is-rumored {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent);
+}
+
+.assertion-tag.is-conditional {
+  color: var(--ink-2);
+  background: var(--surface-3);
+  border: 1px dashed var(--line-strong);
+}
+
+/* 行级提示：只用左侧一条细边，不做整行底色，避免和选中态打架 */
+:deep(.el-table__row.row-assertion) td:first-child {
+  box-shadow: inset 2px 0 0 var(--warn);
+}
+
+:deep(.el-table__row.row-negated) td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .row-actions {

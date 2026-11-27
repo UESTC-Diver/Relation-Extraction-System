@@ -10,6 +10,7 @@ from .entity import Entity, EntityRecognizer
 from .explanation import attach as attach_explanations
 from .language import resolve_language
 from .lexicon import ENTITY_TYPE_ORDER, ENTITY_TYPES, apply_custom_triggers
+from .polarity import judge as judge_polarity
 from .relation import RelationExtractor
 from .tokenizer import split_sentences, warmup
 
@@ -78,6 +79,20 @@ def analyze(
         for i, e in enumerate(entities, start=1):
             e.id = f"e{i}"
         triples = extractor.extract(sentences, entities)
+
+    # 断言极性：抽取器只回答「谁和谁有什么关系」，不区分这句话是在陈述事实、
+    # 否认事实、转述传闻还是提出假设。这一步补上区分，并按极性下调置信度——
+    # 「腾讯否认收购搜狗」不该和「腾讯收购搜狗」拿到同样高的分。
+    for t in triples:
+        verdict = judge_polarity(t.evidence, t.trigger, t.head.start, t.head.end)
+        t.assertion = verdict["assertion"]
+        t.assertion_label = verdict["assertion_label"]
+        t.assertion_cue = verdict["assertion_cue"]
+        t.assertion_clause = verdict["assertion_clause"]
+        if verdict["penalty"] < 1.0:
+            t.confidence = max(0.15, t.confidence * verdict["penalty"])
+            t.score_parts["polarity"] = round(verdict["penalty"], 2)
+
     relations = []
     for i, t in enumerate(triples, start=1):
         item = t.as_dict()
@@ -93,6 +108,11 @@ def analyze(
         relation_type_counts[r["relation"]] = relation_type_counts.get(r["relation"], 0) + 1
 
     elapsed = (time.perf_counter() - started) * 1000
+    assertion_counts: dict[str, int] = {}
+    for r in relations:
+        key = r.get("assertion") or "fact"
+        assertion_counts[key] = assertion_counts.get(key, 0) + 1
+    fact_count = assertion_counts.get("fact", 0)
     return attach_explanations({
         "text": text,
         "language": "zh",
@@ -112,6 +132,9 @@ def analyze(
             "relation_count": len(relations),
             "unique_entity_count": len({e.text for e in entities}),
             "elapsed_ms": round(elapsed, 1),
+            "fact_relation_count": fact_count,
+            "non_fact_relation_count": len(relations) - fact_count,
+            "assertion_counts": assertion_counts,
         },
     })
 
@@ -147,5 +170,8 @@ def _empty_result(text: str, elapsed: float) -> dict:
             "relation_count": 0,
             "unique_entity_count": 0,
             "elapsed_ms": elapsed,
+            "fact_relation_count": 0,
+            "non_fact_relation_count": 0,
+            "assertion_counts": {},
         },
     }

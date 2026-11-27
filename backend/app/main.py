@@ -40,7 +40,7 @@ from .routers import (
 )
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-VERSION = "2.6.0"
+VERSION = "2.7.0"
 
 
 @asynccontextmanager
