@@ -461,6 +461,7 @@ import {
   buildCypher,
   safeFilename,
 } from './utils/export'
+import { syncEntities as buildSyncedEntities } from './utils/entities'
 import LandingPage from './components/LandingPage.vue'
 
 // 首页是默认入口，保持同步渲染，避免首屏闪烁。工作台组件拆成异步 chunk：
@@ -625,10 +626,24 @@ const dirty = computed(
 
 function syncResultRelations(next) {
   if (!result.value) return
+  const synced = buildSyncedEntities({
+    text: result.value.text || '',
+    entities: result.value.entities || [],
+    sentences: result.value.sentences || [],
+    relations: next,
+    entityTypes: schema.value.entity_types || [],
+  })
   result.value = {
     ...result.value,
     relations: next,
-    stats: { ...result.value.stats, relation_count: next.length },
+    entities: synced.entities,
+    entity_type_counts: synced.entityTypeCounts,
+    stats: {
+      ...result.value.stats,
+      relation_count: next.length,
+      entity_count: synced.entityCount,
+      unique_entity_count: synced.uniqueEntityCount,
+    },
   }
 }
 
@@ -682,7 +697,7 @@ async function persistCorrections(forceNew = false) {
       stats: { ...result.value.stats, relation_count: relations.length },
     }
     if (recordId) {
-      await api.saveRelations(recordId, relations)
+      await api.saveRelations(recordId, relations, result.value.entities || [])
     } else {
       const res = await api.saveSnapshot(
         payload,
@@ -892,6 +907,7 @@ function applyResult(payload, recordId = null) {
   savedRelations.value = editableRelations.value.map((r) => ({ ...r }))
   undoStack.value = []
   redoStack.value = []
+  syncResultRelations(editableRelations.value)
   refreshStats()
   syncShareUrl()
   nextTick(updateIndicator)
@@ -940,8 +956,23 @@ async function runExtract({ save = true } = {}) {
   }
 }
 
-function saveCurrent() {
-  runExtract({ save: true })
+/** 保存当前结果快照（含未保存的人工校正），而不是重新跑一遍抽取。 */
+async function saveCurrent() {
+  if (!result.value) return
+  loading.value = true
+  try {
+    const res = await api.saveSnapshot(result.value, title.value, 'text')
+    activeRecordId.value = res.record_id
+    savedRelations.value = editableRelations.value.map((r) => ({ ...r }))
+    await refreshStats()
+    syncShareUrl()
+    ElMessage.success(`已存入历史 #${res.record_id}`)
+    liveMessage.value = `已存入历史 #${res.record_id}`
+  } catch (err) {
+    ElMessage.error(err.message)
+  } finally {
+    loading.value = false
+  }
 }
 
 const EXPORT_MIME = {
