@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from app import main
@@ -148,7 +150,8 @@ def test_api_rejects_unknown_language(client):
 
 
 def test_version_and_brand(client):
-    assert main.VERSION == "2.5.0"
+    # 版本号动态读单一来源，避免每发一版都要改测试断言（2.6.0 起）。
+    assert re.match(r"^\d+\.\d+\.\d+$", main.VERSION)
     assert "文本关系抽取与信息甄别系统" in main.app.title
     health = client.get("/api/health").json()
-    assert health["version"] == "2.5.0"
+    assert health["version"] == main.VERSION

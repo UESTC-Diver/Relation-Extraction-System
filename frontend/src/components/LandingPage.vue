@@ -60,7 +60,7 @@
           <h1 id="lp-headline" class="lp-headline">
             <!-- 390px 下换一句同样具体的短文案，而不是把字号压到看不出层级 -->
             <span class="lp-headline-wide">
-              <span class="lp-mask"><span class="lp-mask-in">从一段中文新闻，</span></span>
+              <span class="lp-mask"><span class="lp-mask-in">从中英文本里，</span></span>
               <span class="lp-mask"><span class="lp-mask-in lp-mask-in-2">抽出带出处的三元组。</span></span>
             </span>
             <span class="lp-headline-narrow">
@@ -72,7 +72,7 @@
 
           <div class="lp-hero-row">
             <p class="lp-sub reveal" :style="{ '--d': '80ms' }">
-              词典与规则模板驱动的中文实体识别与关系抽取，本机处理，每条结果都能回到原文。
+              中文走词典与规则模板，英文走 spaCy 依存句法；本机处理，每条结果都能回到原文。
             </p>
             <div class="lp-hero-actions reveal" :style="{ '--d': '160ms' }">
               <a class="lp-cta" href="/app">

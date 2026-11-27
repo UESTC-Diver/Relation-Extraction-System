@@ -3,7 +3,7 @@
     <div class="wb-head">
       <div class="panel-title">
         <span class="wb-title-label">文本输入</span>
-        <small>粘贴中文新闻，或上传 .txt / .pdf / .docx</small>
+        <small>粘贴中文或英文文本，或上传 .txt / .pdf / .docx</small>
       </div>
       <div class="wb-head-right">
         <span class="wb-count" :class="{ 'is-warn': charCount > 18000 }">

@@ -1,13 +1,17 @@
 <template>
-  <LandingPage v-if="page === 'landing'" />
+  <!-- 页面转场：key 随路由变化，out-in 保证旧页淡出后新页才进场；
+       wrapper 承担高度链，让工作台 .app 的 height:100% 仍然成立。 -->
+  <Transition name="page-swap" mode="out-in">
+    <div :key="page" class="page-shell" :class="{ 'page-shell--app': page === 'app' }">
+      <LandingPage v-if="page === 'landing'" />
 
-  <DemoSandbox v-else-if="page === 'demo'" />
+      <DemoSandbox v-else-if="page === 'demo'" />
 
-  <DossierPage v-else-if="page === 'cases'" />
+      <DossierPage v-else-if="page === 'cases'" />
 
-  <VerifyPage v-else-if="page === 'verify'" />
+      <VerifyPage v-else-if="page === 'verify'" />
 
-  <div v-else-if="page === 'missing'" class="missing" role="main">
+      <div v-else-if="page === 'missing'" class="missing" role="main">
     <p class="missing-code">404</p>
     <h1 class="missing-title">这一页不存在</h1>
     <p class="missing-note">地址没有对应的页面。首页介绍这套系统，静态试用展示真实样例，工作台用来实际抽取。</p>
@@ -297,6 +301,8 @@
           </button>
         </div>
 
+        <ExtractionReplay v-if="result && !loading" :result="result" :schema="schema" />
+
         <div v-if="loading && !result" class="result-skeleton" role="status" aria-label="正在抽取">
           <div class="sk-line sk-title"></div>
           <div class="sk-line"></div>
@@ -434,13 +440,15 @@
       :schema="schema"
       @saved="onLoadRecord"
     />
-    <ReviewDialog
-      v-model="reviewOpen"
-      :record-id="activeRecordId"
-      :title="title"
-      @changed="refreshReview"
-    />
-  </div>
+      <ReviewDialog
+        v-model="reviewOpen"
+        :record-id="activeRecordId"
+        :title="title"
+        @changed="refreshReview"
+      />
+    </div>
+    </div>
+  </Transition>
 </template>
 
 <script setup>
@@ -486,6 +494,7 @@ const RulesLabDialog = defineAsyncComponent(() => import('./components/RulesLabD
 const EngineCompareDialog = defineAsyncComponent(() => import('./components/EngineCompareDialog.vue'))
 const EntityFixDialog = defineAsyncComponent(() => import('./components/EntityFixDialog.vue'))
 const ReviewDialog = defineAsyncComponent(() => import('./components/ReviewDialog.vue'))
+const ExtractionReplay = defineAsyncComponent(() => import('./components/ExtractionReplay.vue'))
 // /demo 是零后端静态沙箱：只在访问该路由时才下载组件与 4 篇真实样例数据，
 // 首页与工作台都不为它付体积成本。
 const DemoSandbox = defineAsyncComponent(() => import('./components/DemoSandbox.vue'))
@@ -517,7 +526,7 @@ const page = ref(resolvePage())
 const PAGE_META = {
   landing: {
     title: '文本关系抽取与信息甄别系统 · 把每一条关系追溯到原文',
-    description: '基于词典与规则模板的中文实体识别与关系抽取系统。6 类实体、19 类关系，每条三元组都附带证据句、触发词与置信度。本地离线运行，效果可用金标准集复现。',
+    description: '中英双引擎的文本关系抽取与信息甄别系统。中文用词典与规则模板，英文用 spaCy 依存句法；6 类实体、19 类关系，每条三元组都附带证据句、触发词与置信度。本机处理，效果可用金标准集复现。',
     robots: 'index, follow',
   },
   demo: {
@@ -537,7 +546,7 @@ const PAGE_META = {
   },
   app: {
     title: '工作台 · 文本关系抽取与信息甄别系统',
-    description: '输入中文文本，识别实体并抽取关系三元组，逐条查看证据句与命中路径。',
+    description: '输入中文或英文文本，自动识别语言，抽取带出处的实体与关系三元组，逐条查看证据句与命中路径。',
     robots: 'noindex, nofollow',
   },
   missing: {
@@ -559,6 +568,28 @@ function applyPageMeta() {
 function onPopstate() {
   page.value = resolvePage()
   applyPageMeta()
+  window.scrollTo({ top: 0 })
+}
+
+/* 站内链接默认整页 reload，页面转场根本看不到，也会丢掉工作台里正在处理的状态。
+   用事件委托在 document 层拦一次：只接管同源、普通左键、无修饰键的页面跳转。
+   锚点（#）、新窗口、下载、mailto 等一律放行，交给浏览器原生行为。 */
+function onDocumentLinkClick(event) {
+  if (event.defaultPrevented || event.button !== 0) return
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  const anchor = event.target.closest?.('a[href]')
+  if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) return
+  if (anchor.origin !== location.origin) return
+  if (!anchor.pathname && !anchor.hash) return
+  // 纯锚点（如同页 #method）不切页，保留平滑滚动
+  if (!anchor.pathname || anchor.pathname === location.pathname) return
+  event.preventDefault()
+  if (location.pathname + location.search + location.hash !== anchor.pathname + anchor.search + anchor.hash) {
+    history.pushState({}, '', anchor.pathname + anchor.search + anchor.hash)
+  }
+  page.value = resolvePage()
+  applyPageMeta()
+  window.scrollTo({ top: 0 })
 }
 
 const SPLIT_KEY = 're.splitPref'
@@ -1254,11 +1285,13 @@ function onNarrowChange(event) {
   isNarrow.value = event.matches
 }
 
-onMounted(async () => {
-  applyPageMeta()
-  window.addEventListener('popstate', onPopstate)
-  // 首页、静态试用与 404 不触碰业务接口：后端没启动时也不该在这些页面弹错误
-  if (page.value !== 'app') return
+let appReady = false
+let appStarting = false
+/* 工作台初始化必须是可重入的：SPA 转场进来时 App.vue 不会重新 mount。
+   全局监听只装一次；业务数据只在首次进入工作台时拉取。 */
+async function ensureAppReady() {
+  if (page.value !== 'app' || appReady || appStarting) return
+  appStarting = true
   const hashTab = tabFromHash()
   if (hashTab) tab.value = hashTab
   window.addEventListener('keydown', onGlobalKeydown)
@@ -1297,10 +1330,31 @@ onMounted(async () => {
       if (!hashTab) tab.value = 'triples'
     }
     syncShareUrl()
+    appReady = true
   } catch (err) {
     loadError.value = `后端未连通：${err.message}`
     ElMessage.error(`后端未连通：${err.message}`)
+  } finally {
+    appStarting = false
   }
+}
+
+/* 不管是首次直达、站内点击还是浏览器前进后退，进入工作台都在转场落定后再初始化。 */
+watch(
+  page,
+  async () => {
+    applyPageMeta()
+    await nextTick()
+    // 首页、静态试用与 404 不触碰业务接口：后端没启动时也不该在这些页面弹错误
+    await ensureAppReady()
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  applyPageMeta()
+  window.addEventListener('popstate', onPopstate)
+  document.addEventListener('click', onDocumentLinkClick)
 })
 
 async function loadDefaultSample(sampleList) {
@@ -1313,6 +1367,7 @@ async function loadDefaultSample(sampleList) {
 
 onBeforeUnmount(() => {
   window.removeEventListener('popstate', onPopstate)
+  document.removeEventListener('click', onDocumentLinkClick)
   window.removeEventListener('keydown', onGlobalKeydown)
   window.removeEventListener('resize', updateIndicator)
   narrowMq?.removeEventListener('change', onNarrowChange)
@@ -1320,6 +1375,49 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* Element Plus 在 Vue 3 下把 el-dialog / el-drawer 渲染成 .app 的自定义元素占位符。
+   SPA 转场后这些占位符的懒渲染 slot 会被提前填充，作为 flex 子项把 .layout 挤成 0。
+   真正浮层 teleport 到 body，不受这里影响：让占位符脱离 flex 流即可。 */
+.app > :is(el-dialog, el-drawer),
+.app > :is(.history-drawer, .batch-dialog, .ev-dialog, .an-dialog, .rl-dialog, .ec-dialog, .ef-dialog, .review-dialog) {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* ---------- 页面转场：200ms 位移 + 淡入，唯一曲线，reduced-motion 只留透明度 ---------- */
+.page-shell {
+  min-height: 100%;
+}
+.page-shell--app {
+  height: 100%;
+  min-height: 0;
+}
+.page-swap-enter-active,
+.page-swap-leave-active {
+  transition: opacity var(--dur-swap) var(--ease), transform var(--dur-swap) var(--ease);
+}
+.page-swap-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.page-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-swap-enter-active,
+  .page-swap-leave-active {
+    transition: opacity var(--dur-swap) linear;
+  }
+  .page-swap-enter-from,
+  .page-swap-leave-to {
+    transform: none;
+  }
+}
+
 /* ---------- 站点级：品牌回首页、页脚返回、404 ---------- */
 .appbar-brand {
   color: inherit;

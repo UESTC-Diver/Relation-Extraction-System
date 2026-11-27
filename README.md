@@ -34,6 +34,9 @@
 | **中英双引擎**（2.4.0） | 工作台顶部切「中文 / English」：**中文**走自研规则引擎（无模型依赖、确定性、可解释）；**英文**走 spaCy 的 `en_core_web_sm`（NER 识别实体 + 依存句法以动词为锚点找主谓宾，再映射到同一套 19 类关系）。适配英文词形变化（acquired / founded / became）与 `X is the CEO of Y` 等句式，纠正小模型把 Alibaba / Epic Games 误判为地名的偏差。**两边输出完全相同的 schema**（实体、三元组、explanation 逐字段对齐），前端、报告、评测层零改动；英文只多 `language` / `engine` 两个元信息字段。模型缺失时接口返回 503 提示、中文链路完全不受影响（`english` 模块懒加载）。`POST /api/extract` 传 `language: "zh"|"en"` |
 | **语言自动识别**（2.5.0） | 工作台「语言」默认「自动识别」：按正文 **CJK 字符占比**（阈值 0.15）确定性判别该走中文规则引擎还是英文 spaCy 引擎，不调概率模型、同文本结果逐字一致；中文新闻里夹 CEO / Inc. 等拉丁缩写不会误判。判别细节（CJK 数、拉丁字母数、占比、阈值、判别方式）随结果写进 `language_detection` 字段，抽取完成提示里也标出「自动识别：中文 / English」；仍可手动切到 `zh` / `en` 覆盖，手动指定时 `language_detection=null`。内部链路（信息甄别、评测、规则实验室）默认仍走中文，零回归。接口 `language` 支持 `auto`（默认）/ `zh` / `en` |
 | **双引擎对比**（2.5.0） | 工作台「更多 → 双引擎对比」对话框：内置三组**中英对照样例**（同一件事的两种说法），分别调用两套引擎并排展示实体数、关系数与实际抽出的三元组，底部说明「同一套 schema」与「为什么中文自研、英文用现成工具」的取舍。英文模型未装时中文侧照常出结果、英文侧给可操作提示；窄屏自动改单列堆叠、无横向溢出 |
+| **抽取过程演绎**（2.6.0） | 工作台结果区上方「播放过程」：把一次已完成的抽取拆成 **原文 → 实体 → 关系 → 回到原文** 四阶段逐步演绎，每步 220ms、错开 60ms，展示的是当次结果的真实字段（实体类型用 `type_label`、三元组用 `head/relation/tail`、证据句按 `sentence_index` 回原文），不是编造的示例动画。四阶段也可点选单看，`aria-live` 播报当前步骤，`prefers-reduced-motion` 下直接跳到末步且去掉位移动画 |
+| **页面转场**（2.6.0） | 五个入口（`/`、`/demo`、`/app`、`/cases`、`/verify`）之间改走 SPA 导航：站内链接由 document 事件委托接管，只在同源、普通左键、无修饰键时 `pushState`，锚点与新窗口仍走浏览器原生行为；页面容器按路由 key 变化，用 `out-in` 做 200ms 位移 + 淡入，浏览器前进后退同样有转场。工作台初始化抽成可重入的 `ensureAppReady()`，转场落定后才拉示例与 schema，从首页点进工作台不会空面板 |
+| **文案口径**（2.6.0） | 首页首屏、meta description、`og:description` 与工作台输入提示统一为「中英双引擎 + 信息甄别」口径；删掉已经不实的「不用模型，不用联网」（英文引擎依赖 spaCy 模型），改为「默认本机处理，联网核验为可选增强」 |
 | **实体识别** | 识别人物、组织机构、地理位置、时间、金额、产品技术共 **6 类实体**，正文中彩色高亮 + hover 显示类型与置信度 + 侧栏实体清单，可按类型显隐 |
 | **关系抽取** | 输出 `<头实体, 关系, 尾实体>` 三元组，覆盖收购、投资、任职于、总部位于、创立、合作、签署协议等 **19 类关系**，每条结果附带置信度、触发词、证据句与所用规则；内置**轻量指代消解**（"该工厂 / 双方 / 后者"自动回指到真实实体）与**主语链继承**（"……并与 B 签署……"继承上一分句主语），并在三元组表格中标注"指代消解 / 主语链"规则来源 |
 | **实体归一** | 机构名递归剥离"有限公司 / 集团 / 控股"等后缀（腾讯控股有限公司 → 腾讯），同一实体的多种写法在图谱、清单与统计中合并为一个节点，清单上以角标提示已合并 |
@@ -332,6 +335,7 @@
 │  │     ├─ EvalDialog.vue      # 评测台：指标卡、F1 回归曲线、漏抽误抽明细
 │  │     ├─ RulesLabDialog.vue  # 规则实验室：领域包、A/B diff、规则体检、学规则、版本回滚
 │  │     ├─ EngineCompareDialog.vue # 双引擎对比（2.5.0）：中英对照样例、并排结果与技术取舍
+│  │     └─ ExtractionReplay.vue    # 抽取过程演绎（2.6.0）：原文→实体→关系→回到原文四阶段播放
 │  │     ├─ AnnotationDialog.vue # 金标准标注：逐条三态、补录、覆盖度、复核预填
 │  │     ├─ EntityFixDialog.vue # 实体级校正：边界 / 类型 / 归一写法与增删
 │  │     └─ ReviewDialog.vue    # 复核台：逐条结论、批注、状态流转、定稿与分享
@@ -340,7 +344,7 @@
 │  ├─ public/                 # favicon.svg、robots.txt、fonts/（本地西文字体）、media/
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
-├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张 + 1.6.0 两张 + 2.1.0 四张 + 2.3.0 九张 + 2.4.0 两张 + 2.5.0 六张，实际截图
+├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张 + 1.6.0 两张 + 2.1.0 四张 + 2.3.0 九张 + 2.4.0 两张 + 2.5.0 六张 + 2.6.0 四张，实际截图
 └─ README.md
 ```
 
@@ -375,7 +379,7 @@ python -m spacy download en_core_web_sm
 国内网络下载模型卡住时，可改用镜像直装 wheel（命令见 `requirements-en.txt` 注释）。未装模型时 `health` 报 `engines.en.available=false`，英文抽取返回 503 提示，**中文与其它功能完全不受影响**——两个引擎按语言分流，互不拖累。
 
 - 接口文档：<http://127.0.0.1:8000/docs>
-- 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `2.5.0`）
+- 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `2.6.0`）
 - 只读报告示例：<http://127.0.0.1:8000/report/12>（记录存在时返回完整离线报告页）
 
 ### 3A. 前端开发模式（热更新）
@@ -564,7 +568,7 @@ npm run build
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 健康检查：版本（2.5.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限、联网甄别是否可用（`verify_external`，默认零 key 免费通道为 true，不泄露 key）、双引擎状态（`engines.zh` / `engines.en`，`engine=dual-engine` 表示两引擎都可用） |
+| `GET` | `/api/health` | 健康检查：版本（2.6.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限、联网甄别是否可用（`verify_external`，默认零 key 免费通道为 true，不泄露 key）、双引擎状态（`engines.zh` / `engines.en`，`engine=dual-engine` 表示两引擎都可用） |
 | `POST` | `/api/extract` | 请求体 `{text, title, save, profile, language}`，返回 `{record_id, result}`；`profile` 取 `general / finance / legal`，`language` 取 `zh`（默认，自研规则引擎）/ `en`（spaCy 引擎），结果里回显 `profile` / `profile_label` / `language`，每条关系带 `explanation`；英文模型缺失返回 503、并发超额返回 429 |
 | `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text/.pdf/.docx`（≤2MB），可选 `profile` / `language` 字段（query 参数）；纯文本自动识别编码，PDF / DOCX 走本地解析库 |
 | `POST` | `/api/extract/batch` | 请求体 `{items: [{text, title}], save, profile}`，最多 20 篇；返回逐篇摘要 + 跨文档聚合，单篇失败不打断 |
@@ -865,11 +869,11 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。
 - `npm run build` 会清空 `frontend/dist/`，截图辅助文件之类的临时内容不要留在 `dist/` 里。
 
-### 交付基线（2026-11-27 实测，2.5.0）
+### 交付基线（2026-11-27 实测，2.6.0）
 
 | 项目 | 结论 |
 | --- | --- |
-| 接口回归 | `python -m pytest -q` → **204 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0 + 3 条 NLP 点状回归 + 15 条 2.4.0 + 17 条 2.5.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
+| 接口回归 | `python -m pytest -q` → **207 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0 + 3 条 NLP 点状回归 + 15 条 2.4.0 + 17 条 2.5.0 + 3 条 2.6.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
 | 静态检查 | `python -m ruff check app tests` → **All checks passed**；前端 `npm run lint` → **clean** |
 | CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.95`）；frontend 跑 lockfile 校验 + `npm ci && npm run lint && npm test && npm run build` |
 | 效果评测 | P 0.960 / R 1.000 / **F1 0.980** / Macro-F1 0.986，与第九节一致、本轮未回退 |
@@ -879,6 +883,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 | 可解释性 | 每条关系带 `explanation`：策略与判定方式、命中词、模板骨架、类型约束、置信度构成公式与 4 步判定链；实时抽取、历史记录、离线报告、静态试用共用 `nlp/explanation.py` 一份口径，纯展示不改 P/R/F1 |
 | 中英双引擎 | 服务在 8000 用 Python 3.11 重启加载 2.4.0：health 报 `engine=dual-engine`、`engines.zh.available=true`、`engines.en.available=true`；实测英文抽取 `Apple acquired Sogou Inc. / Sundar Pichai is the CEO of Google / Jack Ma founded Alibaba` 抽出 8 实体 3 关系（收购 / 任职于 / 创立），触发词 `acquired` / `is CEO of` / `founded` 指回英文原句，公司名正确纠正为组织机构、被动句 `Alibaba is headquartered in Hangzhou` 方向不倒挂；中英 schema 逐字段对齐（entity/relation/explanation 键一致，英文只多 `language`/`engine`）；同文本两次结果逐字一致；中文链路 169 条用例零回归；浏览器真出图断言全过，真截图 `34-verify-en-dual-engine` / `35-verify-en-390`，桌面 1440 与 390 窄屏 `scrollWidth == clientWidth` 无横向溢出、运行时 JS 报错 0 |
 | 语言自动识别与双引擎对比 | 2.5.0：健康报 `version=2.5.0`、品牌名为「文本关系抽取与信息甄别系统」；实测中文新闻（含 CEO / Inc. 缩写）判 `zh`、纯英文句判 `en`、纯数字与空文本回退 `zh`，判别逐次一致；`/api/extract` 默认 auto 返回 `language_detection`，手动 `zh`/`en` 覆盖时该字段为 null，未知语言 400；内部调用不传 language 仍走中文，信息甄别/评测/规则零回归；浏览器真出图断言全过，真截图 `36-landing-closing-svg` / `37-landing-closing-390` / `38-workbench-auto-lang` / `39-workbench-auto-lang-390` / `40-engine-compare` / `41-engine-compare-390`，首页价值段换成**原创 SVG**（校样批注引出关系连线、连线明度编码置信度）彻底去掉 AI 伪文字；对话框在 1440 与 390 两档 `scrollWidth == clientWidth` 无横向溢出；对话框字号 14/16/20 三档符合 5 档约束 |
+| 页面转场与过程演绎 | 2.6.0：五个路由由 document 事件委托接管站内链接（同源、左键、无修饰键才 pushState；锚点/新窗口放行），`<Transition mode="out-in">` 按路由 key 做 200ms 位移+淡入，浏览器前进后退同样有转场；`ensureAppReady()` 可重入，首页点进工作台能正常拉到示例与 schema（真浏览器验证：点击「进入工作台」后实体/关系计数非 0，空面板 0 次）；结果区「播放过程」四阶段用当次真实字段演绎，220ms/步、错开 60ms，`aria-live` 播报、`prefers-reduced-motion` 降级；首页首屏/meta/工作台提示统一为双引擎口径，删掉不实的「不用模型，不用联网」；真截图 `42-landing-new-copy` / `43-replay-stage-relations` / `44-replay-stage-evidence` / `45-replay-390`，1440 与 390 两档无横向溢出 |
 | 规则体检 | `/api/insights` 在一次全表扫描里给出命中热区（触发词 / 策略 / 关系）、从未命中的触发词与人工删除最多的关系，并直接生成可执行建议；规则实验室「规则体检」页签展示结论，点未命中词可带进 A/B 候选；空库只给 baseline，不硬凑 |
 | 领域包 | `general / finance / legal`：finance 18 个、legal 11 个领域触发词。同一句「腾讯控股吃下搜狗公司。」在 general 下 0 条、finance 下 1 条；记录保存 `profile`，历史与报告都能说明「用什么抽的」；`general` 为空集，F1 与 1.4.0 一致 |
 | 静态试用站 | `/demo` 4 篇真实样例、**零 `/api` 请求**、不加载 Element Plus；首页导航与首屏次级 CTA 均可进入；`robots.txt` 允许 `/` 与 `/demo`，拒绝 `/app`、`/api`、`/report`；页面标题与 `robots` 随路由切换，404 页 `noindex` |
