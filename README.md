@@ -2,9 +2,9 @@
 
 > 面向中文文本的实体识别与关系抽取系统 · 每条关系都能追溯到原文，全程本机离线
 >
-> 前端 **Vue 3 + Element Plus** ｜ 后端 **FastAPI + SQLite** ｜ NLP 引擎 **jieba + 词典 + 规则模板**（离线、确定性、可解释）
+> 前端 **Vue 3 + Element Plus** ｜ 后端 **FastAPI + SQLite** ｜ 双引擎：**中文** jieba + 词典 + 触发词规则（离线、确定性、可解释）／**英文** spaCy NER + 依存句法（2.4.0 新增）
 
-用户粘贴一段中文新闻（或上传 `.txt / .pdf / .docx` 文件），系统自动完成**分句 → 分词 → 实体识别 → 关系抽取 → 三元组输出 → 图谱可视化**，并以「实体高亮标注 / 三元组表格 / 节点-关系图 / 统计洞察」四种形式呈现。历史结果持久化到 SQLite，并在其上长出八层能力：**信息甄别**（面向日常的网传消息核查：把一段说法拆成可核查断言，按有据可查 / 存疑待核 / 无从核实分层，标出可疑措辞；判断链路本地、确定性、可复现、不落库，联网核验只是可选增强）、**尽调案卷**（把一个标的多份材料归档成一个档案，按直接结论 / 推断关联 / 待补强疑点三层摆开；推断关系只在读视图时现算、永不入库，因此不会混进三元组或评测）、**跨文档知识库**（全局实体画像、跨文档关系网络、标签与冲突复核）、**自有金标准标注**（在自己的材料上逐条判「该抽 / 不该抽」、补录系统漏抽的关系，凑成一个可复现的评测集，算出「这套规则在我的数据上到底多少分」）、**质量闭环**（界面化评测、规则 A/B 试跑、规则体检与主动建议、**从标注集反推候选触发词**、配置版本回滚、实体级校正）、**复核闭环**（逐条通过 / 存疑 / 驳回、定稿快照、带签名的只读分享）、**离线交付**（单文件 HTML 报告、独立只读分享页、项目包导入导出、后台批量任务）、**可解释性**（每条关系都能展开命中策略、触发词、模板骨架、类型约束与置信度构成）。对外部署另有一层最小安全集（来源白名单、限流、上传沙箱、结构化日志）。核心抽取链路全部在本机完成，不调用云端模型；唯一的外联网发生在信息甄别里**用户主动勾选**的公开来源核验（零 key、只送实体名与短句、不上传全文），不勾选则完全离线。
+用户粘贴一段新闻（中文或英文，或上传 `.txt / .pdf / .docx` 文件），系统自动完成**分句 → 分词 → 实体识别 → 关系抽取 → 三元组输出 → 图谱可视化**，并以「实体高亮标注 / 三元组表格 / 节点-关系图 / 统计洞察」四种形式呈现。**双引擎架构体现技术选型的思考**：中文侧自研「词典 + 触发词规则」引擎（手写规则的工作量、零模型依赖、确定性可复现）；英文侧接 spaCy 成熟模型（NER + 依存句法，体现"什么时候该用现成工具"的判断），两者输出**同一套三元组 schema**，前端与解释层无需区分语言——工作台顶部的「中文 / English」切换即可体验。历史结果持久化到 SQLite，并在其上长出八层能力：**信息甄别**（面向日常的网传消息核查：把一段说法拆成可核查断言，按有据可查 / 存疑待核 / 无从核实分层，标出可疑措辞；判断链路本地、确定性、可复现、不落库，联网核验只是可选增强）、**尽调案卷**（把一个标的多份材料归档成一个档案，按直接结论 / 推断关联 / 待补强疑点三层摆开；推断关系只在读视图时现算、永不入库，因此不会混进三元组或评测）、**跨文档知识库**（全局实体画像、跨文档关系网络、标签与冲突复核）、**自有金标准标注**（在自己的材料上逐条判「该抽 / 不该抽」、补录系统漏抽的关系，凑成一个可复现的评测集，算出「这套规则在我的数据上到底多少分」）、**质量闭环**（界面化评测、规则 A/B 试跑、规则体检与主动建议、**从标注集反推候选触发词**、配置版本回滚、实体级校正）、**复核闭环**（逐条通过 / 存疑 / 驳回、定稿快照、带签名的只读分享）、**离线交付**（单文件 HTML 报告、独立只读分享页、项目包导入导出、后台批量任务）、**可解释性**（每条关系都能展开命中策略、触发词、模板骨架、类型约束与置信度构成）。对外部署另有一层最小安全集（来源白名单、限流、上传沙箱、结构化日志）。核心抽取链路全部在本机完成，不调用云端模型；唯一的外联网发生在信息甄别里**用户主动勾选**的公开来源核验（零 key、只送实体名与短句、不上传全文），不勾选则完全离线。
 
 站点分成几个入口，首屏不直接摆业务表单：
 
@@ -31,6 +31,7 @@
 | 需求 | 实现 |
 | --- | --- |
 | **文本输入** | 支持粘贴长文本（≤ 20000 字），或上传 `.txt / .md / .text / .pdf / .docx` 文件（≤ 2MB，64KB 分块读取）；纯文本自动识别 UTF-8 / GB18030（含 GBK）/ UTF-16 / BIG5，按 CJK 占比与乱码特征给候选解码打分取最优；PDF 与 DOCX 用本地解析库取文字层，全程离线不联网 |
+| **中英双引擎**（2.4.0） | 工作台顶部切「中文 / English」：**中文**走自研规则引擎（无模型依赖、确定性、可解释）；**英文**走 spaCy 的 `en_core_web_sm`（NER 识别实体 + 依存句法以动词为锚点找主谓宾，再映射到同一套 19 类关系）。适配英文词形变化（acquired / founded / became）与 `X is the CEO of Y` 等句式，纠正小模型把 Alibaba / Epic Games 误判为地名的偏差。**两边输出完全相同的 schema**（实体、三元组、explanation 逐字段对齐），前端、报告、评测层零改动；英文只多 `language` / `engine` 两个元信息字段。模型缺失时接口返回 503 提示、中文链路完全不受影响（`english` 模块懒加载）。`POST /api/extract` 传 `language: "zh"|"en"` |
 | **实体识别** | 识别人物、组织机构、地理位置、时间、金额、产品技术共 **6 类实体**，正文中彩色高亮 + hover 显示类型与置信度 + 侧栏实体清单，可按类型显隐 |
 | **关系抽取** | 输出 `<头实体, 关系, 尾实体>` 三元组，覆盖收购、投资、任职于、总部位于、创立、合作、签署协议等 **19 类关系**，每条结果附带置信度、触发词、证据句与所用规则；内置**轻量指代消解**（"该工厂 / 双方 / 后者"自动回指到真实实体）与**主语链继承**（"……并与 B 签署……"继承上一分句主语），并在三元组表格中标注"指代消解 / 主语链"规则来源 |
 | **实体归一** | 机构名递归剥离"有限公司 / 集团 / 控股"等后缀（腾讯控股有限公司 → 腾讯），同一实体的多种写法在图谱、清单与统计中合并为一个节点，清单上以角标提示已合并 |
@@ -173,6 +174,14 @@
 
 ![信息甄别·主体识别 390 窄屏](docs/screenshots/33-verify-subject-390.png)
 
+### 中英双引擎（2.4.0）
+
+工作台顶部把语言切到 English，同一套界面立即走 spaCy 引擎。下面这段英文实测抽出三条三元组——`Apple —收购→ Sogou Inc.`、`Sundar Pichai —任职于→ Google`、`Jack Ma —创立→ Alibaba`，关系标签、配色、置信度呈现与中文完全一致；触发词列显示 `acquired` / `is CEO of` / `founded`，证明是从英文原句锚定的，不是套中文规则：
+
+![英文双引擎抽取](docs/screenshots/34-verify-en-dual-engine.png)
+
+![英文双引擎 390 窄屏](docs/screenshots/35-verify-en-390.png)
+
 两个交互设计点（截图里是静态的，实际是联动的）：
 
 - **证据链穿透**：三元组行的「原文」按钮 → 跳到实体标注视图并高亮该证据句；图谱节点 → 切到三元组并带上「实体：腾讯 ✕」筛选；统计页句子行 → 定位到原文。目的是把「这条关系凭什么抽出来」的核对成本压到一次点击。
@@ -215,7 +224,8 @@
 | 后端框架 | FastAPI（Pydantic v2 校验） | 自动生成 OpenAPI 文档 `/docs` |
 | 服务器 | Uvicorn | 单进程即可同时托管 API 与前端静态资源 |
 | 数据库 | SQLite（标准库 `sqlite3`） | 零配置，`backend/data/app.db` 单文件持久化 |
-| NLP | jieba 0.42 + 自建词典 + 正则规则 | 纯规则流水线，无需下载模型，毫秒级响应 |
+| NLP（中文） | jieba 0.42 + 自建词典 + 触发词规则 | 自研纯规则流水线，无需下载模型，毫秒级响应，确定性可复现 |
+| NLP（英文，2.4.0 可选） | spaCy 3.8 + `en_core_web_sm` | NER + 依存句法，约 12MB 模型；未安装不影响中文链路，同 schema 输出 |
 | 文档解析 | PyMuPDF（`pymupdf`）+ `python-docx` | 可选依赖，只用于 PDF / DOCX 的本地文字层提取；不做 OCR、不联网，缺失时仅这两种格式报明确错误 |
 
 ---
@@ -248,7 +258,8 @@
 │  │  │  ├─ evaluation.py     # P/R/F1 评测核心，CLI 与界面评测台共用
 │  │  │  ├─ explanation.py    # 把一条三元组还原成「为什么抽出来」（纯函数，不参与判定）
 │  │  │  ├─ profiles.py       # 领域包 general / finance / legal 的词条与触发词叠加
-│  │  │  └─ pipeline.py       # analyze(text, custom_terms, custom_triggers) 流水线出口
+│  │  │  ├─ english.py        # 英文引擎（2.4.0）：spaCy NER + 依存句法，同 schema 输出
+│  │  │  └─ pipeline.py       # analyze(text, custom_terms, custom_triggers, language) 双引擎出口
 │  │  └─ routers/
 │  │     ├─ extract.py        # /api/extract、/extract/file、/extract/batch*、/api/health
 │  │     ├─ meta.py           # /api/records（含人工校正、标签筛选）、/stats、/samples、/schema
@@ -269,7 +280,7 @@
 │  │  ├─ gold.json            # 10 段人工标注金标准集（48 条三元组，14 类关系）
 │  │  ├─ run_eval.py          # CLI 入口，调用 nlp/evaluation.py（--json 可机读输出）
 │  │  └─ REPORT.md            # 评测报告：指标、分类型结果、错误分析
-│  ├─ tests/                  # pytest API 回归测试（169 条，临时库隔离）
+│  ├─ tests/                  # pytest API 回归测试（184 条，临时库隔离）
 │  │  ├─ conftest.py          # 每个用例把 db.DB_PATH 指向 tmp_path，不碰真实 app.db
 │  │  ├─ test_api.py          # 抽取/上传编码/错误码/静态路径穿越（16 条）
 │  │  ├─ test_features.py     # FTS5/增量计数/批量/自定义规则/健康信息（12 条）
@@ -280,10 +291,12 @@
 │  │  ├─ test_features_v16.py # 标注集/判定/补录归并/双口径评测/删除清理（18 条）
 │  │  ├─ test_features_v21.py # 案卷归档/推断不入库/控制链方向/疑点/报告分区块（21 条）
 │  │  ├─ test_features_v22.py # 规则反推/自证/子串收敛/冲突/误抽信号/只读（13 条）
-│  │  └─ test_features_v23.py # 信息甄别：三层分级/可疑信号/事实主张提取/全文主体识别/免费 provider/伪证据过滤/查到没查到表述/联网降级/隐私/不入库（31 条）
+│  │  ├─ test_features_v23.py # 信息甄别：三层分级/可疑信号/事实主张提取/全文主体识别/免费 provider/伪证据过滤/查到没查到表述/联网降级/隐私/不入库（31 条）
+│  │  └─ test_features_v24.py # 英文本地化：NER/依存句法/句式模板/类型纠正/同 schema/降级/API（15 条）
 │  ├─ pytest.ini              # testpaths 与 pythonpath
 │  ├─ ruff.toml               # 只开 F / E9，聚焦未定义名与未使用导入
 │  ├─ requirements.txt        # 含可选本地解析库 pymupdf / python-docx
+│  ├─ requirements-en.txt     # 英文引擎可选依赖：spaCy（中文链路零模型依赖）
 │  └─ requirements-dev.txt    # pytest + httpx + ruff
 ├─ .github/workflows/ci.yml   # push / PR 跑依赖锁校验、ruff、pytest、F1 门槛与 npm build
 ├─ frontend/
@@ -318,7 +331,7 @@
 │  ├─ public/                 # favicon.svg、robots.txt、fonts/（本地西文字体）、media/
 │  ├─ dist/                   # 生产构建产物，后端单端口托管
 │  └─ index.html / vite.config.js / package.json
-├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张 + 1.6.0 两张 + 2.1.0 四张 + 2.3.0 九张，实际截图
+├─ docs/screenshots/          # 首页 3 张 + 工作台 10 张 + 1.5.0 三张 + 1.6.0 两张 + 2.1.0 四张 + 2.3.0 九张 + 2.4.0 两张，实际截图
 └─ README.md
 ```
 
@@ -342,6 +355,15 @@ python main.py                # 一键启动（推荐），访问 http://127.0.0
 ```
 
 `requirements.txt` 里的 `pymupdf` 与 `python-docx` 只用于 PDF / DOCX 上传的本地文字层解析；纯文本抽取不依赖它们，未安装时这两种格式会返回明确的错误提示，其余功能不受影响。所有解析都在本机完成，不上传、不调用云端模型。
+
+**英文引擎（可选）**：中文链路零模型依赖、开箱即用。若要工作台切到 English 用 spaCy 引擎，额外装：
+
+```bash
+python -m pip install -r requirements-en.txt
+python -m spacy download en_core_web_sm
+```
+
+国内网络下载模型卡住时，可改用镜像直装 wheel（命令见 `requirements-en.txt` 注释）。未装模型时 `health` 报 `engines.en.available=false`，英文抽取返回 503 提示，**中文与其它功能完全不受影响**——两个引擎按语言分流，互不拖累。
 
 - 接口文档：<http://127.0.0.1:8000/docs>
 - 健康检查：<http://127.0.0.1:8000/api/health>（`version` 为 `1.6.0`）
@@ -411,7 +433,7 @@ python eval/run_eval.py --json     # 机读格式，便于接入 CI
 cd backend
 python -m pip install -r requirements-dev.txt
 python -m ruff check app tests   # lint 门禁
-python -m pytest -q              # 169 passed
+python -m pytest -q              # 184 passed
 python eval/run_eval.py --json   # F1 ≥ 0.95
 ```
 
@@ -524,9 +546,9 @@ python eval/run_eval.py --json   # F1 ≥ 0.95
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 健康检查：版本（2.3.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限、联网甄别是否可用（`verify_external`，默认零 key 免费通道为 true，不泄露 key） |
-| `POST` | `/api/extract` | 请求体 `{text, title, save, profile}`，返回 `{record_id, result}`；`profile` 取 `general / finance / legal`，结果里回显 `profile` / `profile_label`，每条关系带 `explanation`；并发超额返回 429 |
-| `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text/.pdf/.docx`（≤2MB），可选 `profile` 字段；纯文本自动识别编码，PDF / DOCX 走本地解析库 |
+| `GET` | `/api/health` | 健康检查：版本（2.4.0）、19 类关系数、领域包列表、自定义词典/触发词规模、记录数、库大小、FTS5 是否启用、并发上限、联网甄别是否可用（`verify_external`，默认零 key 免费通道为 true，不泄露 key）、双引擎状态（`engines.zh` / `engines.en`，`engine=dual-engine` 表示两引擎都可用） |
+| `POST` | `/api/extract` | 请求体 `{text, title, save, profile, language}`，返回 `{record_id, result}`；`profile` 取 `general / finance / legal`，`language` 取 `zh`（默认，自研规则引擎）/ `en`（spaCy 引擎），结果里回显 `profile` / `profile_label` / `language`，每条关系带 `explanation`；英文模型缺失返回 503、并发超额返回 429 |
+| `POST` | `/api/extract/file` | `multipart/form-data` 上传 `.txt/.md/.text/.pdf/.docx`（≤2MB），可选 `profile` / `language` 字段（query 参数）；纯文本自动识别编码，PDF / DOCX 走本地解析库 |
 | `POST` | `/api/extract/batch` | 请求体 `{items: [{text, title}], save, profile}`，最多 20 篇；返回逐篇摘要 + 跨文档聚合，单篇失败不打断 |
 | `POST` | `/api/extract/batch/files` | `multipart/form-data` 多文件批量（字段名 `files`），编码逐个识别 |
 | `GET` | `/api/records` | 历史记录分页，参数 `limit / offset / keyword / tag`；≥3 字走 FTS5 trigram 索引，短词回退 LIKE；`tag` 精确匹配整个标签 |
@@ -825,11 +847,11 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 - 视觉改动可用 `design-taste-frontend` 的 `lint.mjs`（源码静态检查）与 `inspect.mjs`（生产构建 1440 / 768 / 390 渲染检查）复核，当前结论见「首页：可交互的产品入口」。
 - `npm run build` 会清空 `frontend/dist/`，截图辅助文件之类的临时内容不要留在 `dist/` 里。
 
-### 交付基线（2026-11-16 实测，2.3.0）
+### 交付基线（2026-11-27 实测，2.4.0）
 
 | 项目 | 结论 |
 | --- | --- |
-| 接口回归 | `python -m pytest -q` → **169 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
+| 接口回归 | `python -m pytest -q` → **184 passed**（16 接口 + 12 第二批 + 18 条 1.3.0 + 9 条 P1 校正 + 12 条 1.4.0 + 19 条 1.5.0 + 18 条 1.6.0 + 21 条 2.1.0 + 13 条 2.2.0 + 31 条 2.3.0 + 15 条 2.4.0），每个用例把 `db.DB_PATH` 指向 `tmp_path` 并放宽限流额度，不碰真实库 |
 | 静态检查 | `python -m ruff check app tests` → **All checks passed** |
 | CI 门禁 | `.github/workflows/ci.yml`：backend 跑依赖锁校验 + ruff + pytest + `eval/run_eval.py --json`（断言 `F1 ≥ 0.95`），frontend 跑 lockfile 校验 + `npm ci && npm run build` |
 | 效果评测 | P 0.960 / R 1.000 / **F1 0.980** / Macro-F1 0.986，与第九节一致、本轮未回退 |
@@ -837,6 +859,7 @@ F1 从 0.769 提升到 0.980 来自 `relation.py` 的四类机制：跨句轻量
 | 安全集 | CORS 默认白名单（本机 8000 / Vite 5173）、per-IP 滑动窗口限流（默认 120 次/分）、全局请求体上限 4 MB、上传扩展名 + magic bytes 双检、PDF ≤60 页 + 解析硬超时、DOCX 解压体积上限、结构化 JSON 访问日志 + `X-Request-ID`；只读页 `noindex` / `no-referrer` / `private, no-store`，分享链 HMAC 签名 + 有效期 |
 | 复核闭环 | `draft → in_review → final` 状态机，定稿必须走 `/finalize` 写不可变快照并锁定关系 / 实体写入（409），解锁需显式退回 `in_review`；结论按三元组内容指纹对齐，改了实体自动失效；结论写进单文件 HTML 与只读报告 |
 | 可解释性 | 每条关系带 `explanation`：策略与判定方式、命中词、模板骨架、类型约束、置信度构成公式与 4 步判定链；实时抽取、历史记录、离线报告、静态试用共用 `nlp/explanation.py` 一份口径，纯展示不改 P/R/F1 |
+| 中英双引擎 | 服务在 8000 用 Python 3.11 重启加载 2.4.0：health 报 `engine=dual-engine`、`engines.zh.available=true`、`engines.en.available=true`；实测英文抽取 `Apple acquired Sogou Inc. / Sundar Pichai is the CEO of Google / Jack Ma founded Alibaba` 抽出 8 实体 3 关系（收购 / 任职于 / 创立），触发词 `acquired` / `is CEO of` / `founded` 指回英文原句，公司名正确纠正为组织机构、被动句 `Alibaba is headquartered in Hangzhou` 方向不倒挂；中英 schema 逐字段对齐（entity/relation/explanation 键一致，英文只多 `language`/`engine`）；同文本两次结果逐字一致；中文链路 169 条用例零回归；浏览器真出图断言全过，真截图 `34-verify-en-dual-engine` / `35-verify-en-390`，桌面 1440 与 390 窄屏 `scrollWidth == clientWidth` 无横向溢出、运行时 JS 报错 0 |
 | 规则体检 | `/api/insights` 在一次全表扫描里给出命中热区（触发词 / 策略 / 关系）、从未命中的触发词与人工删除最多的关系，并直接生成可执行建议；规则实验室「规则体检」页签展示结论，点未命中词可带进 A/B 候选；空库只给 baseline，不硬凑 |
 | 领域包 | `general / finance / legal`：finance 18 个、legal 11 个领域触发词。同一句「腾讯控股吃下搜狗公司。」在 general 下 0 条、finance 下 1 条；记录保存 `profile`，历史与报告都能说明「用什么抽的」；`general` 为空集，F1 与 1.4.0 一致 |
 | 静态试用站 | `/demo` 4 篇真实样例、**零 `/api` 请求**、不加载 Element Plus；首页导航与首屏次级 CTA 均可进入；`robots.txt` 允许 `/` 与 `/demo`，拒绝 `/app`、`/api`、`/report`；页面标题与 `robots` 随路由切换，404 页 `noindex` |

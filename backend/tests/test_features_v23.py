@@ -409,6 +409,7 @@ def test_capability_and_examples_api(client):
 
 
 def test_health_exposes_verify_flag(client):
+    from app.main import VERSION
     h = client.get("/api/health").json()
-    assert h["version"] == "2.3.0"
+    assert h["version"] == VERSION
     assert "verify_external" in h

@@ -152,6 +152,7 @@
           :schema="schema"
           :profiles="schema.profiles || []"
           v-model:profile-value="profile"
+          v-model:language-value="language"
           :loading="loading"
           @run="runExtract"
           @file="onFile"
@@ -558,6 +559,7 @@ const SPLIT_KEY = 're.splitPref'
 const text = ref('')
 const title = ref('')
 const profile = ref('general')
+const language = ref('zh')
 const result = ref(null)
 const loading = ref(false)
 const tab = ref('entities')
@@ -915,6 +917,7 @@ async function runExtract({ save = true } = {}) {
     const res = await api.extractText(text.value, title.value, save, {
       signal: controller.signal,
       profile: profile.value,
+      language: language.value,
     })
     if (seq !== extractSeq) return
     applyResult(res.result, res.record_id)
@@ -1097,6 +1100,7 @@ async function onFile(file) {
     const res = await api.extractFile(file, true, {
       signal: controller.signal,
       profile: profile.value,
+      language: language.value,
     })
     if (seq !== extractSeq) return
     text.value = res.result.text

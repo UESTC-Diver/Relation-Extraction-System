@@ -1,0 +1,15 @@
+# 英文抽取引擎（2.4.0 可选依赖）
+#
+# 中文链路完全不依赖本文件——自研的词典 + 触发词规则引擎开箱即用、零模型。
+# 只有需要在工作台切到 English、用 spaCy 的 NER + 依存句法抽英文时才装。
+#
+# 安装：
+#   python -m pip install -r requirements-en.txt
+#   python -m spacy download en_core_web_sm
+#
+# 国内网络若 GitHub 下载模型卡住，可用镜像直装 wheel：
+#   python -m pip install en_core_web_sm@https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+#
+# 未安装时：health 报 engines.en.available=false，英文抽取返回 503 明确提示，
+# 中文链路、其余所有功能完全不受影响。
+spacy>=3.7,<3.9

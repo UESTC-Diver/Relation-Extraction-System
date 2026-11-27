@@ -36,12 +36,22 @@ def analyze(
     text: str,
     custom_terms: list[dict] | None = None,
     custom_triggers: dict[str, list[str]] | None = None,
+    language: str = "zh",
 ) -> dict:
-    """对一段中文文本执行实体识别与关系抽取，返回可直接序列化的结果。
+    """对文本执行实体识别与关系抽取，返回可直接序列化的结果。
 
     custom_terms    —— 用户自定义词典，[{"text": ..., "type": ...}]
     custom_triggers —— 用户自定义关系触发词，{关系 key: [触发词...]}
+    language        —— "zh"（默认，自研规则引擎）/ "en"（spaCy 双引擎）
+
+    双引擎：中文走自研词典 + 触发词规则（零模型依赖），英文走 spaCy 的
+    NER + 依存句法。两者输出同一套 schema。english 模块在函数内懒加载，
+    因此未装 spaCy 的环境里中文链路完全不受影响。
     """
+    if (language or "zh").strip().lower() in ("en", "english"):
+        from .english import analyze_en
+        return analyze_en(text)
+
     started = time.perf_counter()
     text = (text or "").strip()
     if not text:

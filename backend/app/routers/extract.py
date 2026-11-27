@@ -56,10 +56,11 @@ def _extract_slot():
 
 
 class ExtractRequest(BaseModel):
-    text: str = Field(..., description="待抽取的中文新闻文本")
+    text: str = Field(..., description="待抽取的新闻文本（中文或英文）")
     title: str | None = Field(default=None, description="自定义标题，留空则自动截取")
     save: bool = Field(default=True, description="是否写入历史记录")
     profile: str = Field(default="general", description="领域包：general / finance / legal")
+    language: str = Field(default="zh", description="语言：zh（自研规则引擎）/ en（spaCy 引擎）")
 
 
 class ExtractResponse(BaseModel):
@@ -277,22 +278,31 @@ def _run(
     custom_terms: list[dict] | None = None,
     custom_triggers: dict[str, list[str]] | None = None,
     profile: str = "general",
+    language: str = "zh",
 ) -> ExtractResponse:
     text = text.strip()
     if not text:
         raise HTTPException(status_code=400, detail="文本内容为空")
     if len(text) > MAX_CHARS:
         raise HTTPException(status_code=413, detail=f"文本过长（{len(text)} 字），请控制在 {MAX_CHARS} 字以内")
+    lang = (language or "zh").strip().lower()
+    if lang not in ("zh", "en"):
+        raise HTTPException(status_code=400, detail=f"未知语言：{language}（仅支持 zh / en）")
     key = _check_profile(profile)
     terms, triggers = domain_profiles.merge(
         custom_terms if custom_terms is not None else db.list_custom_terms(),
         custom_triggers if custom_triggers is not None else db.custom_triggers_by_relation(),
         key,
     )
-    result = analyze(text, custom_terms=terms, custom_triggers=triggers)
+    try:
+        result = analyze(text, custom_terms=terms, custom_triggers=triggers, language=lang)
+    except RuntimeError as exc:
+        # 英文模型缺失时不 500，给出可操作的提示
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     result["source"] = source
     result["profile"] = key
     result["profile_label"] = domain_profiles.get(key)["label"]
+    result["language"] = lang
     record_id = (
         db.save_record(result, source=source, title=title or "", profile=key) if save else None
     )
@@ -397,7 +407,10 @@ def _run_batch(
 @router.post("/extract", response_model=ExtractResponse, summary="粘贴文本抽取")
 def extract_text(payload: ExtractRequest) -> ExtractResponse:
     with _extract_slot():
-        return _run(payload.text, payload.title, payload.save, "text", profile=payload.profile)
+        return _run(
+            payload.text, payload.title, payload.save, "text",
+            profile=payload.profile, language=payload.language,
+        )
 
 
 @router.post("/extract/file", response_model=ExtractResponse, summary="上传文本文件抽取")
@@ -405,12 +418,15 @@ async def extract_file(
     file: UploadFile = File(..., description=".txt / .md / .text / .pdf / .docx，纯本地解析"),
     save: bool = True,
     profile: str = "general",
+    language: str = "zh",
 ) -> ExtractResponse:
     text, title = await _read_upload(file)
     if not _extract_slots.acquire(blocking=False):
         raise HTTPException(status_code=429, detail="抽取任务过多，请稍后重试")
     try:
-        return await run_in_threadpool(_run, text, title, save, "file", None, None, profile)
+        return await run_in_threadpool(
+            _run, text, title, save, "file", None, None, profile, language
+        )
     finally:
         _extract_slots.release()
 
@@ -443,10 +459,16 @@ def health() -> dict:
     # 延迟取版本号：版本只在 main 里定义一处，避免两处硬编码各改一半。
     from ..main import VERSION
     from ..verify import capability
+    from ..nlp import english
 
+    en_available = english.available()
     return {
         "status": "ok",
-        "engine": "rule-based-cn-nlp",
+        "engine": "dual-engine" if en_available else "rule-based-cn-nlp",
+        "engines": {
+            "zh": {"type": "rule-based", "available": True},
+            "en": {"type": "spacy", "available": en_available},
+        },
         "version": VERSION,
         "relation_types": len(RELATION_RULES),
         "profiles": domain_profiles.valid_keys(),

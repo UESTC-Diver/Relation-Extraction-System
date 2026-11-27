@@ -21,7 +21,7 @@
     <div class="wb-samples">
       <span class="wb-label">示例</span>
       <button
-        v-for="s in samples"
+        v-for="s in visibleSamples"
         :key="s.id"
         class="sample-chip"
         :class="{ 'is-active': activeSample === s.id }"
@@ -32,6 +32,22 @@
       >
         {{ s.title }}
       </button>
+    </div>
+
+    <div class="wb-lang">
+      <span class="wb-label">语言</span>
+      <div class="wb-lang-switch" role="group" aria-label="选择抽取语言">
+        <button
+          v-for="opt in langOptions"
+          :key="opt.value"
+          class="wb-lang-btn"
+          :class="{ 'is-active': languageValue === opt.value }"
+          type="button"
+          :aria-pressed="languageValue === opt.value ? 'true' : 'false'"
+          @click="emit('update:languageValue', opt.value)"
+        >{{ opt.label }}</button>
+      </div>
+      <span class="wb-lang-note">{{ languageNote }}</span>
     </div>
 
     <div class="wb-profile">
@@ -125,8 +141,7 @@
           </div>
         </div>
         <p class="ability-note">
-          引擎为「词典 + 词法规则 + jieba 词性」的离线流水线：先分句，再按机构/地名后缀、人物上下文、职位线索识别实体，
-          最后以触发词锚定句式模板（不含 BERT 类模型依赖），结果确定、可解释。
+          {{ abilityNote }}
         </p>
       </el-collapse-item>
     </el-collapse>
@@ -148,12 +163,49 @@ const props = defineProps({
   schema: { type: Object, default: () => ({}) },
   profiles: { type: Array, default: () => [] },
   profileValue: { type: String, default: 'general' },
+  languageValue: { type: String, default: 'zh' },
   loading: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
-  'update:modelValue', 'update:titleValue', 'update:profileValue', 'run', 'file', 'clear',
+  'update:modelValue', 'update:titleValue', 'update:profileValue',
+  'update:languageValue', 'run', 'file', 'clear',
 ])
+
+const langOptions = [
+  { value: 'zh', label: '中文' },
+  { value: 'en', label: 'English' },
+]
+const languageNote = computed(() =>
+  props.languageValue === 'en'
+    ? '英文走 spaCy 引擎（NER + 依存句法），需模型可用'
+    : '中文走自研词典 + 触发词规则，零模型依赖',
+)
+
+// 英文示例内置：后端 /api/samples 只提供中文样例，英文模式用本地一组。
+const enSamples = [
+  {
+    id: 'en-acquire', title: '科技公司收购',
+    content: 'Apple acquired Sogou Inc. in 2021. Alphabet Inc. acquired Fitbit in 2020. Microsoft acquired GitHub in 2018.',
+  },
+  {
+    id: 'en-people', title: '人物与任职',
+    content: 'Jack Ma founded Alibaba in 1999. Sundar Pichai is the CEO of Google. Alibaba is headquartered in Hangzhou.',
+  },
+  {
+    id: 'en-invest', title: '投资交易',
+    content: 'Tencent invested in Epic Games. Google invested in Anthropic in 2023.',
+  },
+]
+const visibleSamples = computed(() =>
+  props.languageValue === 'en' ? enSamples : (props.samples || []),
+)
+
+const abilityNote = computed(() =>
+  props.languageValue === 'en'
+    ? '英文走 spaCy 的 en_core_web_sm 模型：NER 识别实体，依存句法以动词为锚点确定主谓宾，再映射到与中文相同的 19 类关系。属于成熟的现成工具，体现工程选型判断。'
+    : '引擎为「词典 + 词法规则 + jieba 词性」的离线流水线：先分句，再按机构/地名后缀、人物上下文、职位线索识别实体，最后以触发词锚定句式模板（不含 BERT 类模型依赖），结果确定、可解释。',
+)
 
 const opened = ref([])
 const activeSample = ref('')
@@ -310,6 +362,48 @@ function submit() {
   font-size: 11.5px;
   color: var(--muted);
   margin-right: 3px;
+}
+
+/* 语言切换：两个小按钮，窄屏可整行折行 */
+.wb-lang {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 0 9px;
+}
+.wb-lang-switch {
+  flex: none;
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.wb-lang-btn {
+  height: 26px;
+  padding: 0 12px;
+  font-family: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 0;
+  cursor: pointer;
+  transition: background var(--dur-press) var(--ease), color var(--dur-press) var(--ease);
+}
+.wb-lang-btn + .wb-lang-btn { border-left: 1px solid var(--line-strong); }
+.wb-lang-btn:hover { color: var(--ink); }
+.wb-lang-btn.is-active {
+  color: #fff;
+  background: var(--brand-red);
+}
+.wb-lang-note {
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* 领域包：一行原生控件，不引组件库下拉，避免窄屏多一层浮层 */

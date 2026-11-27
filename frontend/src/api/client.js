@@ -30,7 +30,11 @@ export const health = () => http.get('/health')
 export const extractText = (text, title = '', save = true, options = {}) =>
   http.post(
     '/extract',
-    { text, title, save, profile: options.profile || 'general' },
+    {
+      text, title, save,
+      profile: options.profile || 'general',
+      language: options.language || 'zh',
+    },
     { signal: options.signal },
   )
 
@@ -38,7 +42,7 @@ export const extractFile = (file, save = true, options = {}) => {
   const form = new FormData()
   form.append('file', file)
   return http.post(
-    `/extract/file?save=${save}&profile=${encodeURIComponent(options.profile || 'general')}`,
+    `/extract/file?save=${save}&profile=${encodeURIComponent(options.profile || 'general')}&language=${encodeURIComponent(options.language || 'zh')}`,
     form,
     {
       headers: { 'Content-Type': 'multipart/form-data' },
